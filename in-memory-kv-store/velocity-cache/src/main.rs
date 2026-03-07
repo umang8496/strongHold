@@ -7,6 +7,8 @@ use chrono::{DateTime, Utc};
 type ValueStore = RwLock<HashMap<String, CacheEntry>>;
 type MetadataStore = RwLock<HashMap<String, CacheMetadata>>;
 
+const DEFAULT_TTL_SECONDS: i64 = 60;
+
 #[derive(Clone, Serialize)]
 struct CacheEntry {
     value: String,
@@ -19,11 +21,14 @@ struct CacheMetadata {
     last_accessed_at: DateTime<Utc>,
     frequency: u64,
     size: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expires_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Deserialize)]
 struct PutRequest {
     value: String,
+    ttl: Option<u64>
 }
 
 #[derive(Serialize)]
@@ -54,6 +59,10 @@ async fn put_key(
 
     let key = key.into_inner();
     let now = Utc::now();
+    // let expires_at = body.ttl.map(|ttl| now + chrono::Duration::seconds(ttl as i64));
+
+    let ttl = body.ttl.unwrap_or(DEFAULT_TTL_SECONDS as u64);
+    let expires_at = Some(now + chrono::Duration::seconds(ttl as i64));
 
     {
         let mut values = state.values.write().unwrap();
@@ -77,6 +86,7 @@ async fn put_key(
                 last_accessed_at: now,
                 frequency: 0,
                 size: body.value.len(),
+                expires_at,
             },
         );
     }
@@ -99,6 +109,19 @@ async fn get_key(
             let mut metadata = state.metadata.write().unwrap();
 
             if let Some(meta) = metadata.get_mut(&key) {
+
+                if let Some(expiry) = meta.expires_at {
+                    if Utc::now() > expiry {
+                        drop(values);
+                        drop(metadata);
+
+                        state.values.write().unwrap().remove(&key);
+                        state.metadata.write().unwrap().remove(&key);
+
+                        return HttpResponse::NotFound().json(ApiResponse { status: "key_expired".into() });
+                    }
+                }
+
                 meta.last_accessed_at = Utc::now();
                 meta.frequency += 1;
             }
