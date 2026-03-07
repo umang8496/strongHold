@@ -3,11 +3,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::RwLock;
 use chrono::{DateTime, Utc};
+use tokio::time::{sleep, Duration};
 
 type ValueStore = RwLock<HashMap<String, CacheEntry>>;
 type MetadataStore = RwLock<HashMap<String, CacheMetadata>>;
 
-const DEFAULT_TTL_SECONDS: i64 = 60;
+const DEFAULT_TTL_SECONDS: u64 = 60;
 
 #[derive(Clone, Serialize)]
 struct CacheEntry {
@@ -21,14 +22,13 @@ struct CacheMetadata {
     last_accessed_at: DateTime<Utc>,
     frequency: u64,
     size: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    expires_at: Option<DateTime<Utc>>,
+    ttl: u64,
 }
 
 #[derive(Deserialize)]
 struct PutRequest {
     value: String,
-    ttl: Option<u64>
+    ttl: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -59,10 +59,7 @@ async fn put_key(
 
     let key = key.into_inner();
     let now = Utc::now();
-    // let expires_at = body.ttl.map(|ttl| now + chrono::Duration::seconds(ttl as i64));
-
-    let ttl = body.ttl.unwrap_or(DEFAULT_TTL_SECONDS as u64);
-    let expires_at = Some(now + chrono::Duration::seconds(ttl as i64));
+    let ttl = body.ttl.unwrap_or(DEFAULT_TTL_SECONDS);
 
     {
         let mut values = state.values.write().unwrap();
@@ -86,7 +83,7 @@ async fn put_key(
                 last_accessed_at: now,
                 frequency: 0,
                 size: body.value.len(),
-                expires_at,
+                ttl,
             },
         );
     }
@@ -110,16 +107,19 @@ async fn get_key(
 
             if let Some(meta) = metadata.get_mut(&key) {
 
-                if let Some(expiry) = meta.expires_at {
-                    if Utc::now() > expiry {
-                        drop(values);
-                        drop(metadata);
+                let expiry_time =
+                    meta.last_accessed_at + chrono::Duration::seconds(meta.ttl as i64);
 
-                        state.values.write().unwrap().remove(&key);
-                        state.metadata.write().unwrap().remove(&key);
+                if Utc::now() > expiry_time {
 
-                        return HttpResponse::NotFound().json(ApiResponse { status: "key_expired".into() });
-                    }
+                    drop(values);
+                    drop(metadata);
+
+                    state.values.write().unwrap().remove(&key);
+                    state.metadata.write().unwrap().remove(&key);
+
+                    return HttpResponse::NotFound()
+                        .json(ApiResponse { status: "key_expired".into() });
                 }
 
                 meta.last_accessed_at = Utc::now();
@@ -133,7 +133,8 @@ async fn get_key(
         })
 
     } else {
-        HttpResponse::NotFound().json(ApiResponse { status: "key_not_found".into() })
+        HttpResponse::NotFound()
+            .json(ApiResponse { status: "key_not_found".into() })
     }
 }
 
@@ -169,7 +170,44 @@ async fn get_metadata(
     if let Some(meta) = metadata.get(&key) {
         HttpResponse::Ok().json(meta)
     } else {
-        HttpResponse::NotFound().json(ApiResponse { status: "key_not_found".into() })
+        HttpResponse::NotFound()
+            .json(ApiResponse { status: "key_not_found".into() })
+    }
+}
+
+async fn cleanup_expired_keys(state: web::Data<AppState>) {
+
+    loop {
+
+        sleep(Duration::from_secs(10)).await;
+
+        let now = Utc::now();
+        let mut expired_keys = Vec::new();
+
+        {
+            let metadata = state.metadata.read().unwrap();
+
+            for (key, meta) in metadata.iter() {
+
+                let expiry_time =
+                    meta.last_accessed_at + chrono::Duration::seconds(meta.ttl as i64);
+
+                if now > expiry_time {
+                    expired_keys.push(key.clone());
+                }
+            }
+        }
+
+        if !expired_keys.is_empty() {
+
+            let mut values = state.values.write().unwrap();
+            let mut metadata = state.metadata.write().unwrap();
+
+            for key in expired_keys {
+                values.remove(&key);
+                metadata.remove(&key);
+            }
+        }
     }
 }
 
@@ -179,6 +217,12 @@ async fn main() -> std::io::Result<()> {
     let state = web::Data::new(AppState {
         values: RwLock::new(HashMap::new()),
         metadata: RwLock::new(HashMap::new()),
+    });
+
+    let cleaner_state = state.clone();
+
+    tokio::spawn(async move {
+        cleanup_expired_keys(cleaner_state).await;
     });
 
     println!("VelocityCache server starting on http://127.0.0.1:8080");
