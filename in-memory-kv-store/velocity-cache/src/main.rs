@@ -5,6 +5,7 @@ use std::sync::RwLock;
 use chrono::{DateTime, Utc};
 use tokio::time::{sleep, Duration};
 use std::sync::atomic::{AtomicU64, Ordering};
+use actix_web::middleware::Logger;
 
 type ValueStore = RwLock<HashMap<String, CacheEntry>>;
 type MetadataStore = RwLock<HashMap<String, CacheMetadata>>;
@@ -258,6 +259,8 @@ async fn cleanup_expired_keys(state: web::Data<AppState>) {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
 
+    env_logger::init();
+
     let state = web::Data::new(
         AppState {
             values: RwLock::new(HashMap::new()),
@@ -282,6 +285,7 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         App::new()
+            .wrap(Logger::default())
             .app_data(state.clone())
             .service(
                 web::scope("/velocitycache")
