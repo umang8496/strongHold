@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::RwLock;
 use chrono::{DateTime, Utc};
 use tokio::time::{sleep, Duration};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 type ValueStore = RwLock<HashMap<String, CacheEntry>>;
 type MetadataStore = RwLock<HashMap<String, CacheMetadata>>;
@@ -45,6 +46,25 @@ struct ApiResponse {
 struct AppState {
     values: ValueStore,
     metadata: MetadataStore,
+    stats: CacheStats,
+}
+
+struct CacheStats {
+    total_requests: AtomicU64,
+    hits: AtomicU64,
+    misses: AtomicU64,
+    sets: AtomicU64,
+    deletes: AtomicU64,
+}
+
+#[derive(Serialize)]
+struct StatsResponse {
+    total_requests: u64,
+    hits: u64,
+    misses: u64,
+    sets: u64,
+    deletes: u64,
+    total_keys: usize,
 }
 
 async fn health() -> impl Responder {
@@ -87,6 +107,9 @@ async fn put_key(
             },
         );
     }
+
+    state.stats.sets.fetch_add(1, Ordering::Relaxed);
+    state.stats.total_requests.fetch_add(1, Ordering::Relaxed);
 
     HttpResponse::Ok().json(ApiResponse { status: "ok".into() })
 }
@@ -155,6 +178,8 @@ async fn delete_key(
         metadata.remove(&key);
     }
 
+    state.stats.deletes.fetch_add(1, Ordering::Relaxed);
+    state.stats.total_requests.fetch_add(1, Ordering::Relaxed);
     HttpResponse::Ok().json(ApiResponse { status: "deleted".into() })
 }
 
@@ -168,11 +193,30 @@ async fn get_metadata(
     let metadata = state.metadata.read().unwrap();
 
     if let Some(meta) = metadata.get(&key) {
+        state.stats.hits.fetch_add(1, Ordering::Relaxed);
+        state.stats.total_requests.fetch_add(1, Ordering::Relaxed);
         HttpResponse::Ok().json(meta)
     } else {
-        HttpResponse::NotFound()
-            .json(ApiResponse { status: "key_not_found".into() })
+        state.stats.misses.fetch_add(1, Ordering::Relaxed);
+        state.stats.total_requests.fetch_add(1, Ordering::Relaxed);
+        HttpResponse::NotFound().json(ApiResponse { status: "key_not_found".into() })
     }
+}
+
+async fn stats(state: web::Data<AppState>) -> impl Responder {
+
+    let values = state.values.read().unwrap();
+
+    let response = StatsResponse {
+        total_requests: state.stats.total_requests.load(Ordering::Relaxed),
+        hits: state.stats.hits.load(Ordering::Relaxed),
+        misses: state.stats.misses.load(Ordering::Relaxed),
+        sets: state.stats.sets.load(Ordering::Relaxed),
+        deletes: state.stats.deletes.load(Ordering::Relaxed),
+        total_keys: values.len(),
+    };
+
+    HttpResponse::Ok().json(response)
 }
 
 async fn cleanup_expired_keys(state: web::Data<AppState>) {
@@ -214,10 +258,19 @@ async fn cleanup_expired_keys(state: web::Data<AppState>) {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
 
-    let state = web::Data::new(AppState {
-        values: RwLock::new(HashMap::new()),
-        metadata: RwLock::new(HashMap::new()),
-    });
+    let state = web::Data::new(
+        AppState {
+            values: RwLock::new(HashMap::new()),
+            metadata: RwLock::new(HashMap::new()),
+            stats: CacheStats {
+                total_requests: AtomicU64::new(0),
+                hits: AtomicU64::new(0),
+                misses: AtomicU64::new(0),
+                sets: AtomicU64::new(0),
+                deletes: AtomicU64::new(0),
+            },
+        }
+    );
 
     let cleaner_state = state.clone();
 
@@ -236,7 +289,8 @@ async fn main() -> std::io::Result<()> {
                     .route("/cache/{key}", web::put().to(put_key))
                     .route("/cache/{key}", web::get().to(get_key))
                     .route("/cache/{key}", web::delete().to(delete_key))
-                    .route("/cache/{key}/metadata", web::get().to(get_metadata)),
+                    .route("/cache/{key}/metadata", web::get().to(get_metadata))
+                    .route("/stats", web::get().to(stats))
             )
     })
     .bind(("127.0.0.1", 8080))?
