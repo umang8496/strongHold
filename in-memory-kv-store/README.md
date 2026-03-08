@@ -24,6 +24,13 @@ The implementation emphasizes **correctness, concurrency, observability, and cra
 
 These features collectively demonstrate core backend infrastructure concepts such as **durability, concurrency control, and system observability**.
 
+## Build and Run
+
+```sh
+>>> cargo build
+>>> RUST_LOG=info cargo run
+```
+
 ## Architecture
 
 The system follows a layered architecture separating API handling, storage, and background processing.
@@ -183,7 +190,7 @@ Used for service monitoring and orchestration systems.
 
 > PUT /velocitycache/cache/{key}
 
-```sh 
+```sh
 Request body:
 
 ```json
