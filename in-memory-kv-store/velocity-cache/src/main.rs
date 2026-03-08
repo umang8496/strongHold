@@ -1,18 +1,22 @@
-use actix_web::{web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
+use chrono::{DateTime, Utc};
+use log::info;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::RwLock;
-use chrono::{DateTime, Utc};
-use tokio::time::{sleep, Duration};
+use std::fs::{read_to_string, OpenOptions};
+use std::io::Write;
 use std::sync::atomic::{AtomicU64, Ordering};
-use actix_web::middleware::Logger;
+use std::sync::RwLock;
+use tokio::sync::mpsc;
+use tokio::time::{sleep, Duration};
 
 type ValueStore = RwLock<HashMap<String, CacheEntry>>;
 type MetadataStore = RwLock<HashMap<String, CacheMetadata>>;
 
 const DEFAULT_TTL_SECONDS: u64 = 60;
+const WAL_FILE: &str = "velocitycache.wal";
 
-#[derive(Clone, Serialize)]
+#[derive(Clone)]
 struct CacheEntry {
     value: String,
 }
@@ -44,10 +48,19 @@ struct ApiResponse {
     status: String,
 }
 
-struct AppState {
-    values: ValueStore,
-    metadata: MetadataStore,
-    stats: CacheStats,
+#[derive(Serialize)]
+struct StatsResponse {
+    total_requests: u64,
+    hits: u64,
+    misses: u64,
+    sets: u64,
+    deletes: u64,
+    total_keys: usize,
+}
+
+enum WalEntry {
+    Put(String, String, u64),
+    Delete(String),
 }
 
 struct CacheStats {
@@ -58,14 +71,11 @@ struct CacheStats {
     deletes: AtomicU64,
 }
 
-#[derive(Serialize)]
-struct StatsResponse {
-    total_requests: u64,
-    hits: u64,
-    misses: u64,
-    sets: u64,
-    deletes: u64,
-    total_keys: usize,
+struct AppState {
+    values: ValueStore,
+    metadata: MetadataStore,
+    stats: CacheStats,
+    wal_sender: mpsc::Sender<WalEntry>,
 }
 
 async fn health() -> impl Responder {
@@ -79,18 +89,17 @@ async fn put_key(
 ) -> impl Responder {
 
     let key = key.into_inner();
-    let now = Utc::now();
     let ttl = body.ttl.unwrap_or(DEFAULT_TTL_SECONDS);
+    let now = Utc::now();
+
+    let _ = state
+        .wal_sender
+        .send(WalEntry::Put(key.clone(), body.value.clone(), ttl))
+        .await;
 
     {
         let mut values = state.values.write().unwrap();
-
-        values.insert(
-            key.clone(),
-            CacheEntry {
-                value: body.value.clone(),
-            },
-        );
+        values.insert(key.clone(), CacheEntry { value: body.value.clone() });
     }
 
     {
@@ -121,6 +130,7 @@ async fn get_key(
 ) -> impl Responder {
 
     let key = key.into_inner();
+    state.stats.total_requests.fetch_add(1, Ordering::Relaxed);
 
     let values = state.values.read().unwrap();
 
@@ -142,6 +152,8 @@ async fn get_key(
                     state.values.write().unwrap().remove(&key);
                     state.metadata.write().unwrap().remove(&key);
 
+                    state.stats.misses.fetch_add(1, Ordering::Relaxed);
+
                     return HttpResponse::NotFound()
                         .json(ApiResponse { status: "key_expired".into() });
                 }
@@ -151,12 +163,17 @@ async fn get_key(
             }
         }
 
+        state.stats.hits.fetch_add(1, Ordering::Relaxed);
+
         HttpResponse::Ok().json(GetResponse {
             key,
             value: entry.value.clone(),
         })
 
     } else {
+
+        state.stats.misses.fetch_add(1, Ordering::Relaxed);
+
         HttpResponse::NotFound()
             .json(ApiResponse { status: "key_not_found".into() })
     }
@@ -168,6 +185,11 @@ async fn delete_key(
 ) -> impl Responder {
 
     let key = key.into_inner();
+
+    let _ = state
+        .wal_sender
+        .send(WalEntry::Delete(key.clone()))
+        .await;
 
     {
         let mut values = state.values.write().unwrap();
@@ -181,6 +203,7 @@ async fn delete_key(
 
     state.stats.deletes.fetch_add(1, Ordering::Relaxed);
     state.stats.total_requests.fetch_add(1, Ordering::Relaxed);
+
     HttpResponse::Ok().json(ApiResponse { status: "deleted".into() })
 }
 
@@ -194,13 +217,10 @@ async fn get_metadata(
     let metadata = state.metadata.read().unwrap();
 
     if let Some(meta) = metadata.get(&key) {
-        state.stats.hits.fetch_add(1, Ordering::Relaxed);
-        state.stats.total_requests.fetch_add(1, Ordering::Relaxed);
         HttpResponse::Ok().json(meta)
     } else {
-        state.stats.misses.fetch_add(1, Ordering::Relaxed);
-        state.stats.total_requests.fetch_add(1, Ordering::Relaxed);
-        HttpResponse::NotFound().json(ApiResponse { status: "key_not_found".into() })
+        HttpResponse::NotFound()
+            .json(ApiResponse { status: "key_not_found".into() })
     }
 }
 
@@ -227,7 +247,7 @@ async fn cleanup_expired_keys(state: web::Data<AppState>) {
         sleep(Duration::from_secs(10)).await;
 
         let now = Utc::now();
-        let mut expired_keys = Vec::new();
+        let mut expired = Vec::new();
 
         {
             let metadata = state.metadata.read().unwrap();
@@ -238,19 +258,98 @@ async fn cleanup_expired_keys(state: web::Data<AppState>) {
                     meta.last_accessed_at + chrono::Duration::seconds(meta.ttl as i64);
 
                 if now > expiry_time {
-                    expired_keys.push(key.clone());
+                    expired.push(key.clone());
                 }
             }
         }
 
-        if !expired_keys.is_empty() {
+        if !expired.is_empty() {
 
             let mut values = state.values.write().unwrap();
             let mut metadata = state.metadata.write().unwrap();
 
-            for key in expired_keys {
+            for key in expired {
                 values.remove(&key);
                 metadata.remove(&key);
+            }
+        }
+    }
+}
+
+async fn wal_writer(mut receiver: mpsc::Receiver<WalEntry>) {
+
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(WAL_FILE)
+        .unwrap();
+
+    while let Some(entry) = receiver.recv().await {
+
+        match entry {
+
+            WalEntry::Put(k, v, ttl) => {
+                writeln!(file, "PUT {} {} {}", k, v, ttl).unwrap();
+            }
+
+            WalEntry::Delete(k) => {
+                writeln!(file, "DELETE {}", k).unwrap();
+            }
+        }
+
+        file.sync_data().unwrap();
+    }
+}
+
+fn replay_wal(values: &ValueStore, metadata: &MetadataStore) {
+
+    if let Ok(contents) = read_to_string(WAL_FILE) {
+
+        for line in contents.lines() {
+
+            let parts: Vec<&str> = line.split_whitespace().collect();
+
+            match parts[0] {
+
+                "PUT" => {
+
+                    if parts.len() < 4 {
+                        continue;
+                    }
+
+                    let key = parts[1].to_string();
+                    let value = parts[2].to_string();
+                    let ttl: u64 = parts[3].parse().unwrap();
+
+                    let now = Utc::now();
+
+                    values.write().unwrap().insert(
+                        key.clone(),
+                        CacheEntry { value: value.clone() },
+                    );
+
+                    metadata.write().unwrap().insert(
+                        key,
+                        CacheMetadata {
+                            created_at: now,
+                            updated_at: now,
+                            last_accessed_at: now,
+                            frequency: 0,
+                            size: value.len(),
+                            ttl,
+                        },
+                    );
+                }
+
+                "DELETE" => {
+
+                    let key = parts[1];
+
+                    values.write().unwrap().remove(key);
+                    metadata.write().unwrap().remove(key);
+                }
+
+                _ => {}
             }
         }
     }
@@ -261,19 +360,22 @@ async fn main() -> std::io::Result<()> {
 
     env_logger::init();
 
-    let state = web::Data::new(
-        AppState {
-            values: RwLock::new(HashMap::new()),
-            metadata: RwLock::new(HashMap::new()),
-            stats: CacheStats {
-                total_requests: AtomicU64::new(0),
-                hits: AtomicU64::new(0),
-                misses: AtomicU64::new(0),
-                sets: AtomicU64::new(0),
-                deletes: AtomicU64::new(0),
-            },
-        }
-    );
+    let (wal_sender, wal_receiver) = mpsc::channel(10000);
+
+    let state = web::Data::new(AppState {
+        values: RwLock::new(HashMap::new()),
+        metadata: RwLock::new(HashMap::new()),
+        wal_sender,
+        stats: CacheStats {
+            total_requests: AtomicU64::new(0),
+            hits: AtomicU64::new(0),
+            misses: AtomicU64::new(0),
+            sets: AtomicU64::new(0),
+            deletes: AtomicU64::new(0),
+        },
+    });
+
+    replay_wal(&state.values, &state.metadata);
 
     let cleaner_state = state.clone();
 
@@ -281,7 +383,11 @@ async fn main() -> std::io::Result<()> {
         cleanup_expired_keys(cleaner_state).await;
     });
 
-    println!("VelocityCache server starting on http://127.0.0.1:8080");
+    tokio::spawn(async move {
+        wal_writer(wal_receiver).await;
+    });
+
+    info!("VelocityCache starting at http://127.0.0.1:8080");
 
     HttpServer::new(move || {
         App::new()
@@ -294,7 +400,7 @@ async fn main() -> std::io::Result<()> {
                     .route("/cache/{key}", web::get().to(get_key))
                     .route("/cache/{key}", web::delete().to(delete_key))
                     .route("/cache/{key}/metadata", web::get().to(get_metadata))
-                    .route("/stats", web::get().to(stats))
+                    .route("/stats", web::get().to(stats)),
             )
     })
     .bind(("127.0.0.1", 8080))?
