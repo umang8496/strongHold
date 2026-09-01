@@ -1514,20 +1514,908 @@ Control Flow
  └── match
 ```
 
-The next major step is **ownership**.
+---
 
-That is where concepts such as:
+## Practice Set 1 — Datatypes, Immutability and Control Flow
 
-* `String`
-* `&str`
-* mutable variables
-* scopes
-* function calls
-* moves
-* `Copy`
-* borrowing
-* lifetimes
+### Exercise 1 — Type Inference
 
-start coming together into one coherent model.
+```rust
+fn main() {
+    let x = 10;
+    let y = 20;
+
+    println!("{}", x + y);
+}
+```
+
+#### Does it compile?
+
+Yes.
+
+#### What types are inferred?
+
+Both `x` and `y` are inferred as:
+
+```text
+i32
+```
+
+#### Output
+
+```text
+30
+```
+
+#### Explanation
+
+Rust performs type inference.
+
+Since these are ordinary integer literals and there is no contextual information requiring another integer type, Rust infers `i32`.
+
+Conceptually:
+
+```rust
+let x: i32 = 10;
+let y: i32 = 20;
+```
+
+---
+
+### Exercise 2 — Type Mismatch
+
+```rust
+fn main() {
+    let x: i32 = 10;
+    let y: f64 = 20.0;
+
+    let result = x + y;
+
+    println!("{}", result);
+}
+```
+
+#### Does it compile?
+
+No.
+
+#### Why?
+
+The `+` operation requires compatible operand types.
+
+Here:
+
+```text
+x -> i32
+y -> f64
+```
+
+Rust does **not** automatically convert the `i32` into an `f64`.
+
+The problem occurs at:
+
+```rust
+x + y
+```
+
+It is not because `result` expects `i32`.
+
+#### Fix
+
+Explicitly convert one value:
+
+```rust
+let result = x as f64 + y;
+```
+
+Now both operands are `f64`.
+
+Alternatively:
+
+```rust
+let result = x + y as i32;
+```
+
+although this changes the floating-point value into an integer and may lose information.
+
+---
+
+### Exercise 3 — Immutability
+
+```rust
+fn main() {
+    let x = 10;
+
+    x = 20;
+
+    println!("{}", x);
+}
+```
+
+#### Does it compile?
+
+No.
+
+#### Why?
+
+Variables declared using `let` are immutable by default.
+
+```rust
+let x = 10;
+```
+
+Therefore this is invalid:
+
+```rust
+x = 20;
+```
+
+#### Fix
+
+Declare the variable as mutable:
+
+```rust
+fn main() {
+    let mut x = 10;
+
+    x = 20;
+
+    println!("{}", x);
+}
+```
+
+Output:
+
+```text
+20
+```
+
+---
+
+### Exercise 4 — Shadowing
+
+```rust
+fn main() {
+    let x = 10;
+    let x = x + 5;
+    let x = x * 2;
+
+    println!("{}", x);
+}
+```
+
+#### Does it compile?
+
+Yes.
+
+#### Output
+
+```text
+30
+```
+
+Evaluation:
+
+```text
+x = 10
+x = 10 + 5 = 15
+x = 15 * 2 = 30
+```
+
+#### Is this mutation?
+
+No.
+
+These are separate bindings created through **shadowing**.
+
+Conceptually:
+
+```text
+Binding 1: x = 10
+Binding 2: x = 15
+Binding 3: x = 30
+```
+
+The newer binding shadows the previous one.
+
+This is different from:
+
+```rust
+let mut x = 10;
+x = 15;
+```
+
+which is mutation of the same binding.
+
+---
+
+### Exercise 5 — Shadowing + Type Change
+
+```rust
+fn main() {
+    let value = "100";
+
+    let value = value.parse::<i32>().unwrap();
+
+    println!("{}", value + 20);
+}
+```
+
+#### Does it compile?
+
+Yes.
+
+#### Initial type
+
+```rust
+let value = "100";
+```
+
+The type is:
+
+```text
+&str
+```
+
+It is **not** `String`.
+
+#### After shadowing
+
+```rust
+let value = value.parse::<i32>().unwrap();
+```
+
+The new `value` is:
+
+```text
+i32
+```
+
+So the type changes:
+
+```text
+&str
+  ↓ shadowing
+i32
+```
+
+#### Output
+
+```text
+120
+```
+
+#### Important distinction
+
+```rust
+"100"
+```
+
+is a string slice:
+
+```text
+&str
+```
+
+whereas:
+
+```rust
+String::from("100")
+```
+
+creates a `String`.
+
+---
+
+### Exercise 6 — `if` as an Expression
+
+```rust
+fn main() {
+    let number = 10;
+
+    let result = if number > 5 {
+        "large"
+    } else {
+        "small"
+    };
+
+    println!("{}", result);
+}
+```
+
+#### Does it compile?
+
+Yes.
+
+#### Output
+
+```text
+large
+```
+
+Because:
+
+```text
+number = 10
+10 > 5 = true
+```
+
+Therefore the first branch executes.
+
+#### Why can `if` be assigned to a variable?
+
+Because `if` is an **expression** in Rust.
+
+It produces a value.
+
+```rust
+let result = if condition {
+    value1
+} else {
+    value2
+};
+```
+
+Here `result` receives whichever value the selected branch produces.
+
+---
+
+### Exercise 7 — Branch Type Mismatch
+
+```rust
+fn main() {
+    let number = 10;
+
+    let result = if number > 5 {
+        100
+    } else {
+        "small"
+    };
+
+    println!("{}", result);
+}
+```
+
+#### Does it compile?
+
+No.
+
+#### Why?
+
+The two branches produce different types:
+
+```text
+true branch  -> i32
+false branch -> &str
+```
+
+Specifically:
+
+```rust
+100
+```
+
+is an `i32`, while:
+
+```rust
+"small"
+```
+
+is an `&str`.
+
+Since `if` is an expression, it must have a well-defined type.
+
+Rust therefore rejects this code.
+
+#### Correct example
+
+```rust
+let result = if number > 5 {
+    100
+} else {
+    200
+};
+```
+
+Both branches produce `i32`.
+
+---
+
+### Exercise 8 — Semicolon and Block Expressions
+
+#### Version 1
+
+```rust
+fn main() {
+    let result = {
+        let x = 10;
+        x + 20
+    };
+
+    println!("{}", result);
+}
+```
+
+#### Does it compile?
+
+Yes.
+
+#### What is `result`?
+
+```text
+30
+```
+
+The final expression:
+
+```rust
+x + 20
+```
+
+does not have a semicolon.
+
+Therefore it becomes the value of the block.
+
+#### Version 2
+
+```rust
+fn main() {
+    let result = {
+        let x = 10;
+        x + 20;
+    };
+
+    println!("{}", result);
+}
+```
+
+#### Does it compile?
+
+Yes.
+
+However, `result` now has type:
+
+```text
+()
+```
+
+#### Why?
+
+The semicolon:
+
+```rust
+x + 20;
+```
+
+turns the expression into a statement.
+
+There is no final value-producing expression in the block.
+
+Therefore the block evaluates to the unit value:
+
+```text
+()
+```
+
+#### Important rule
+
+```rust
+{
+    expression
+}
+```
+
+produces the value of `expression`.
+
+But:
+
+```rust
+{
+    expression;
+}
+```
+
+evaluates to:
+
+```text
+()
+```
+
+The semicolon does not "nullify" the expression.  
+It changes its syntactic role from the final expression into a statement.
+
+---
+
+### Exercise 9 — `for` Range
+
+```rust
+fn main() {
+    for i in 1..5 {
+        println!("{}", i);
+    }
+}
+```
+
+#### Output
+
+```text
+1
+2
+3
+4
+```
+
+The range:
+
+```rust
+1..5
+```
+
+is exclusive of the upper bound.
+
+Therefore:
+
+```text
+1, 2, 3, 4
+```
+
+#### Include `5`
+
+Use an inclusive range:
+
+```rust
+for i in 1..=5 {
+    println!("{}", i);
+}
+```
+
+Output:
+
+```text
+1
+2
+3
+4
+5
+```
+
+#### Range comparison
+
+```text
+1..5    -> 1, 2, 3, 4
+1..=5   -> 1, 2, 3, 4, 5
+```
+
+---
+
+### Exercise 10 — `loop` Returning a Value
+
+```rust
+fn main() {
+    let mut counter = 0;
+
+    let result = loop {
+        counter += 1;
+
+        if counter == 3 {
+            break counter * 10;
+        }
+    };
+
+    println!("{}", result);
+}
+```
+
+#### Output
+
+```text
+30
+```
+
+Execution:
+
+```text
+counter = 0
+counter = 1
+counter = 2
+counter = 3
+```
+
+At `counter == 3`:
+
+```rust
+break counter * 10;
+```
+
+becomes:
+
+```rust
+break 30;
+```
+
+The value `30` becomes the value of the `loop` expression.
+
+Therefore:
+
+```rust
+let result = loop { ... };
+```
+
+results in:
+
+```text
+result = 30
+```
+
+---
+
+### Exercise 11 — `match` Exhaustiveness
+
+```rust
+fn main() {
+    let number = 10;
+
+    match number {
+        1 => println!("one"),
+        2 => println!("two"),
+    }
+}
+```
+
+#### Does it compile?
+
+No.
+
+#### Why?
+
+`match` must be **exhaustive**.
+
+The code handles:
+
+```text
+1
+2
+```
+
+but `number` could be many other values.
+
+Rust requires every possible case to be covered.
+
+#### Fix
+
+Use `_` as a catch-all pattern:
+
+```rust
+match number {
+    1 => println!("one"),
+    2 => println!("two"),
+    _ => println!("other"),
+}
+```
+
+For:
+
+```text
+number = 10
+```
+
+the output is:
+
+```text
+other
+```
+
+---
+
+### Exercise 12 — Scope
+
+```rust
+fn main() {
+    let x = 10;
+
+    if x > 5 {
+        let y = 20;
+        println!("{}", y);
+    }
+
+    println!("{}", x);
+}
+```
+
+#### Does it compile?
+
+Yes.
+
+#### Output
+
+```text
+20
+10
+```
+
+#### Why?
+
+`y` is declared inside the `if` block:
+
+```rust
+if x > 5 {
+    let y = 20;
+}
+```
+
+Therefore `y` exists only inside that scope.
+
+After the closing brace:
+
+```rust
+}
+```
+
+`y` is no longer accessible.
+
+`x`, however, was declared in the outer scope:
+
+```rust
+let x = 10;
+```
+
+Therefore it remains accessible after the `if` block.
+
+---
+
+## Key Lessons From This Exercise
+
+### 1. Rust has strong static typing
+
+Rust does not silently perform arbitrary type conversions.
+
+```text
+i32 + f64
+```
+
+is invalid unless you explicitly convert one operand.
+
+---
+
+### 2. `let` means immutable by default
+
+```rust
+let x = 10;
+```
+
+To mutate:
+
+```rust
+let mut x = 10;
+```
+
+---
+
+### 3. Shadowing is different from mutation
+
+```rust
+let x = 10;
+let x = 20;
+```
+
+creates a new binding.
+
+Whereas:
+
+```rust
+let mut x = 10;
+x = 20;
+```
+
+mutates an existing mutable binding.
+
+---
+
+### 4. Shadowing can change types
+
+```rust
+let value = "100";                  // &str
+let value = value.parse::<i32>();   // different binding
+```
+
+This is one reason shadowing is useful in Rust.
+
+---
+
+### 5. `&str` and `String` are different types
+
+```rust
+"hello"
+```
+
+has type:
+
+```text
+&str
+```
+
+while:
+
+```rust
+String::from("hello")
+```
+
+has type:
+
+```text
+String
+```
+
+We will eventually connect this distinction directly to ownership and borrowing.
+
+---
+
+### 6. Rust is expression-oriented
+
+These produce values:
+
+```rust
+if ...
+```
+
+```rust
+match ...
+```
+
+```rust
+loop ...
+```
+
+and blocks can also produce values:
+
+```rust
+{
+    expression
+}
+```
+
+---
+
+### 7. The final expression of a block matters
+
+```rust
+{
+    10 + 20
+}
+```
+
+produces:
+
+```text
+30
+```
+
+while:
+
+```rust
+{
+    10 + 20;
+}
+```
+
+produces:
+
+```text
+()
+```
+
+---
+
+### 8. `match` is exhaustive
+
+Rust wants the compiler to know that all possible cases have been handled.
+
+```rust
+match value {
+    1 => ...,
+    2 => ...,
+    _ => ...,
+}
+```
 
 ---
