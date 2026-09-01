@@ -231,15 +231,15 @@ Rust optimizes for:
 
 Rust compilation pipeline:
 
-```sh
+```rust
 Rust Source Code
-↓
+    ↓
 Rust Compiler (rustc)
-↓
+    ↓
 LLVM Intermediate Representation (IR)
-↓
+    ↓
 LLVM Optimizer
-↓
+    ↓
 Machine Code (x86 / ARM / etc.)
 ```
 
@@ -278,11 +278,11 @@ Important distinction:
 Rust uses AOT (Ahead-of-Time) compilation.  
 Unlike Java:
 
-| Java | Rust |
-| ---- | ---- |
-| Compiles to bytecode | Compiles to machine code |
-| Requires JVM | No VM required |
-| Uses JIT at runtime | Fully compiled before execution |
+| Java                 | Rust                            |
+| -------------------- | ------------------------------- |
+| Compiles to bytecode | Compiles to machine code        |
+| Requires JVM         | No VM required                  |
+| Uses JIT at runtime  | Fully compiled before execution |
 
 Rust binaries:
 
@@ -409,5 +409,101 @@ More technically correct would be:
 > “Rust compiles to a self-contained native binary that does not require a virtual machine.”
 
 That's the accurate engineering explanation.
+
+---
+
+## Our first Rust program
+
+The traditional **Hello World** program in Rust is:
+
+```rust
+fn main() {
+    println!("Hello, world!");
+}
+```
+
+The journey is roughly:
+
+```rust
+main.rs
+   ↓
+Rust compiler (rustc)
+   ↓
+Parsing + type checking + borrow checking
+   ↓
+LLVM IR
+   ↓
+LLVM optimization
+   ↓
+Machine code
+   ↓
+Native executable
+```
+
+So when we say Rust is a compiled language, this is what we mean.
+
+### What happens to fn `main()`?
+
+Rust recognizes main as the entry point of the executable.  
+But here's an interesting detail:
+The `main()` is not literally the first function the CPU executes.  
+
+Conceptually, there is a startup sequence:
+
+```text
+Operating System
+       ↓
+Program startup code
+       ↓
+Rust runtime initialization
+       ↓
+main()
+       ↓
+println!(...)
+```
+
+The OS loads the executable into memory and transfers control to the executable's startup code.  
+That startup code eventually invokes your `main()`.
+
+### What does compilation actually produce?
+
+Suppose you run:
+
+```text
+cargo build --release
+```
+
+Rust compiles the source and produces a native executable.  
+Conceptually:
+
+```text
+hello-world/
+├── Cargo.toml
+├── src/
+│   └── main.rs
+└── target/
+    └── release/
+        └── hello-world   ← native executable
+```
+
+That executable contains machine code suitable for the target architecture.
+
+### Then the OS takes over
+
+When you execute:
+
+> ./hello-world
+
+the operating system:
+
+- Loads the executable.
+- Maps its required code/data into the process's memory.
+- Initializes the process.
+- Starts execution at the executable's entry point.
+- Startup code eventually calls `main()`.
+- `main()` executes `println!`.
+- Output is written to stdout.
+- `main()` finishes.
+- The process terminates.
 
 ---
