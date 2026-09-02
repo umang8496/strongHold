@@ -10,7 +10,7 @@
 - [Deep-Dive: Collection Invalidation, Non-Lexical Lifetimes (NLL), and Implicit Reborrowing](#deep-dive-collection-invalidation-non-lexical-lifetimes-nll-and-implicit-reborrowing)
 - [Deep-Dive: Smart Pointers, `Box<T>`, Deref Coercion Chains, and Compiler Privileges](#deep-dive-smart-pointers-boxt-deref-coercion-chains-and-compiler-privileges)
 - [Deep-Dive: Interior Mutability, Shared Ownership (`Rc<T>`), `Cell<T>`, `RefCell<T>`, and `UnsafeCell<T>`](#deep-dive-interior-mutability-shared-ownership-rct-cellt-refcellt-and-unsafecellt)
-- [Deep-Dive: Rust Concurrency, Ownership, and the `Arc<Mutex<T>>` vs. `Rc<RefCell<T>>` Paradigm](#deep-dive-rust-concurrency-ownership-and-the-arcmutex-vs-rcrefcellt-paradigm)
+- [Deep-Dive: Rust Concurrency, Ownership, and the `Arc<Mutex<T>>` vs. `Rc<RefCell<T>>` Paradigm](#deep-dive-rust-concurrency-ownership-and-the-arcmutext-vs-rcrefcellt-paradigm)
 
 ---
 
