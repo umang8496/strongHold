@@ -1,6 +1,7 @@
 <!-- markdownlint-disable MD001 -->
 <!-- markdownlint-disable MD024 -->
 <!-- markdownlint-disable MD025 -->
+<!-- markdownlint-disable MD026 -->
 <!-- markdownlint-disable MD040 -->
 
 # Memory Management and Ownership
@@ -271,7 +272,7 @@ Stack Layout of Buffer (24 bytes on stack):
 └──────────────────────────────────────────────┘
 ```
 
-#### The Difference is Compile-Time Static Analysis:
+#### The Difference is Compile-Time Static Analysis
 
 - **Types with `Copy`:** The compiler allows the source variable to remain active, initialized, and readable after the bitwise copy.
 - **Types without `Copy` (Move Semantics):** The compiler tracks the source binding as logically uninitialized after the bitwise transfer, forbidding any subsequent read or borrow.
@@ -1450,7 +1451,7 @@ error[E0277]: `Rc<RefCell<i32>>` cannot be sent between threads safely
     = note: required for `[closure]` to implement `Send`
 ```
 
-#### Technical Root Cause:
+#### Technical Root Cause
 
 1. **`Rc<T>` is `!Send` and `!Sync`:** `Rc` manipulates its `strong_count` via non-atomic integers (`usize`).  
    If two threads call `Rc::clone` or drop handles concurrently, a data race occurs on the reference counter in CPU cache lines, causing memory leaks or double-free undefined behavior.
