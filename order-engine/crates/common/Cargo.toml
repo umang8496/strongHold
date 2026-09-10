@@ -1,0 +1,18 @@
+[package]
+name = "common"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Inherit web framework to implement Actix's ResponseError trait
+actix-web = { workspace = true }
+
+# Inherit thiserror to derive standard Error traits
+thiserror = { workspace = true }
+
+# Inherit serde and serde_json to format JSON error responses
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Inherit log to log internal server errors without leaking them to users
+log = { workspace = true }

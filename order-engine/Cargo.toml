@@ -1,0 +1,61 @@
+# ==============================================================================
+# Root Workspace Manifest
+# ==============================================================================
+# This file does not build a binary itself. It coordinates sub-crates, manages
+# shared dependency versions, and establishes workspace-wide compiler settings.
+# ==============================================================================
+
+[workspace]
+# Tell Cargo where each member crate lives on the filesystem.
+members = [
+    "crates/app",
+    "crates/catalog",
+    "crates/common",
+    "crates/database",
+    "crates/inventory",
+    "crates/orders",
+]
+
+# Use Resolver version 2 (standard for modern Rust 2021 edition).
+# Resolver 2 avoids unifying crate features across dev-dependencies and build targets.
+resolver = "2"
+
+[workspace.dependencies]
+# --- Web Framework & Async Runtime ---
+# actix-web: Handles HTTP server, routing, extractors, and worker thread lifecycle.
+actix-web = "4.9"
+# tokio: Multi-threaded async runtime underpinning modern Rust async I/O.
+tokio = { version = "1.40", features = ["macros", "rt-multi-thread"] }
+
+# --- Database & Persistence ---
+# diesel: Compile-time checked ORM and query builder for PostgreSQL.
+# Features:
+#   - postgres: Enables the PostgreSQL backend driver.
+#   - r2d2: Enables synchronous connection pooling for multithreaded environments.
+#   - chrono: Maps PostgreSQL TIMESTAMP/TIMESTAMPTZ to chrono::DateTime.
+#   - uuid: Maps PostgreSQL UUID types to uuid::Uuid.
+diesel = { version = "2.2", features = ["postgres", "r2d2", "chrono", "uuid"] }
+# r2d2: Standalone pool manager (Diesel exposes its integration via diesel::r2d2).
+r2d2 = "0.8"
+
+# --- Serialization & Types ---
+# serde: Universal serialization/deserialization framework.
+serde = { version = "1.0", features = ["derive"] }
+# serde_json: Reading and writing JSON bodies for HTTP APIs.
+serde_json = "1.0"
+# uuid: Generating and parsing unique identifiers.
+uuid = { version = "1.10", features = ["v4", "serde"] }
+# chrono: Date and time utilities with serialization support.
+chrono = { version = "0.4", features = ["serde"] }
+
+# --- Error Handling & Environment ---
+# thiserror: Ergonomic derive macro for custom standard library Error types.
+thiserror = "1.0"
+# dotenvy: A maintained fork of dotenv to load environment variables from .env files.
+dotenvy = "0.15"
+
+# --- Structured Logging & Observability ---
+# env_logger: Lightweight logger initialized via environment variable (e.g., RUST_LOG=info).
+env_logger = "0.11"
+# log: Standard logging facade providing macros like info!(), warn!(), error!().
+log = "0.4"
