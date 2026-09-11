@@ -1,6 +1,24 @@
 [package]
 name = "catalog"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
+# Internal workspace crates
+common = { path = "../common" }
+database = { path = "../database" }
+
+# Database & ORM
+diesel = { workspace = true }
+
+# Web Framework (needed for Actix route handlers, extractors, and Response)
+actix-web = { workspace = true }
+
+# Types & Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+# Logging
+log = { workspace = true }

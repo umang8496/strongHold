@@ -9,7 +9,7 @@ file = "crates/database/src/schema.rs"
 schema = "catalog"
 
 # Ensure Diesel imports UUID and Chrono types so the macro knows how to map them
-import_types = ["diesel::sql_types::*", "diesel_full_text_search::*"]
+import_types = ["diesel::sql_types::*"]
 
 [migrations_directory]
 dir = "migrations"

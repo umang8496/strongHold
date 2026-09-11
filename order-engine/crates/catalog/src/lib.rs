@@ -1,14 +1,8 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! ==============================================================================
+//! Catalog Domain Crate
+//! ==============================================================================
+//! Owns products and categories, product search/filtering, and pricing rules.
+//! ==============================================================================
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub mod dto;
+pub mod models;

@@ -3,7 +3,6 @@
 pub mod catalog {
     diesel::table! {
         use diesel::sql_types::*;
-        use diesel_full_text_search::*;
 
         catalog.products (id) {
             id -> Uuid,
