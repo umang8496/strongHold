@@ -1,0 +1,15 @@
+# ==============================================================================
+# Diesel CLI Configuration
+# ==============================================================================
+
+[print_schema]
+file = "crates/database/src/schema.rs"
+
+# Instruct Diesel to introspect all our domain schemas instead of just 'public'
+schema = "catalog"
+
+# Ensure Diesel imports UUID and Chrono types so the macro knows how to map them
+import_types = ["diesel::sql_types::*", "diesel_full_text_search::*"]
+
+[migrations_directory]
+dir = "migrations"

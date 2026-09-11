@@ -1,14 +1,11 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! ==============================================================================
+//! Database Infrastructure Crate
+//! ==============================================================================
+//! Owns connection pooling, Diesel query helpers, and the generated schema.
+//! ==============================================================================
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub mod pool;
+pub mod schema;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+// Re-export pool types directly at crate root
+pub use pool::{establish_pool, get_conn, map_diesel_error, DbConn, DbPool, PgManager};

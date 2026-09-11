@@ -1,6 +1,15 @@
 [package]
 name = "database"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
+# Internal common crate for AppError/AppResult
+common = { path = "../common" }
+
+# Diesel ORM with PostgreSQL and r2d2 connection pool features
+diesel = { workspace = true }
+r2d2 = { workspace = true }
+
+# Logging
+log = { workspace = true }
