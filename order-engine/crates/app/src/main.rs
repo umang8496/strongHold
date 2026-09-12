@@ -49,6 +49,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(pool_data.clone())
             // Mount domain route configurators
             .configure(catalog::configure_routes)
+            .configure(inventory::configure_routes)
     })
     .bind(("127.0.0.1", server_port))?
     .run()

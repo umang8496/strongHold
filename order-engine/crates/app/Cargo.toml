@@ -8,6 +8,7 @@ edition = "2021"
 catalog = { path = "../catalog" }
 common = { path = "../common" }
 database = { path = "../database" }
+inventory = { path = "../inventory" }
 
 # Web Framework & Async Runtime
 actix-web = { workspace = true }

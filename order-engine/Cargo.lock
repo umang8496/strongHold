@@ -283,6 +283,7 @@ dependencies = [
  "database",
  "dotenvy",
  "env_logger",
+ "inventory",
  "log",
  "tokio",
 ]
