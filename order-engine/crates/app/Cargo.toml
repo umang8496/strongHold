@@ -9,6 +9,7 @@ catalog = { path = "../catalog" }
 common = { path = "../common" }
 database = { path = "../database" }
 inventory = { path = "../inventory" }
+orders = { path = "../orders" }
 
 # Web Framework & Async Runtime
 actix-web = { workspace = true }

@@ -6,7 +6,9 @@
 //! ==============================================================================
 
 use actix_web::{middleware::Logger, web, App, HttpServer};
+use inventory::{InventoryPort, LocalInventoryService};
 use std::env;
+use std::sync::Arc;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -36,7 +38,11 @@ async fn main() -> std::io::Result<()> {
     log::info!("Database connection pool successfully initialized.");
 
     // 5. Wrap the pool in Actix's shared web::Data container
-    let pool_data = web::Data::new(pool);
+    let pool_data = web::Data::new(pool.clone());
+
+    // Construct the concrete inventory service and bind it to the public port trait
+    let inventory_service: Arc<dyn InventoryPort> = Arc::new(LocalInventoryService::new(pool.clone()));
+    let inventory_port_data = web::Data::new(inventory_service);
 
     log::info!("Starting HTTP server on 127.0.0.1:{}...", server_port);
 
@@ -48,8 +54,11 @@ async fn main() -> std::io::Result<()> {
             // Register shared DB pool for extractors
             .app_data(pool_data.clone())
             // Mount domain route configurators
+            // Register shared DB pool for extractors
+            .app_data(inventory_port_data.clone())            
             .configure(catalog::configure_routes)
             .configure(inventory::configure_routes)
+            .configure(orders::configure_routes)
     })
     .bind(("127.0.0.1", server_port))?
     .run()
