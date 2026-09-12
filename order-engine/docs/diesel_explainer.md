@@ -1,3 +1,11 @@
+<!-- markdownlint-disable MD001 -->
+<!-- markdownlint-disable MD024 -->
+<!-- markdownlint-disable MD025 -->
+<!-- markdownlint-disable MD026 -->
+<!-- markdownlint-disable MD040 -->
+<!-- markdownlint-disable MD056 -->
+<!-- markdownlint-disable MD060 -->
+
 # The Complete Architectural Guide to Diesel ORM
 
 To understand Diesel—especially coming from the Java and Spring Boot ecosystem—you must first understand what Diesel explicitly refuses to be.
