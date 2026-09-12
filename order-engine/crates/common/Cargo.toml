@@ -19,3 +19,6 @@ serde_json = { workspace = true }
 
 # Inherit log to log internal server errors without leaking them to users
 log = { workspace = true }
+
+# OpenAPI v3 spec generator and embedded swagger UI
+utoipa = { workspace = true }

@@ -9,6 +9,7 @@ use actix_web::{
 use diesel::result::Error as DieselError;
 use serde::Serialize;
 use thiserror::Error;
+use utoipa::ToSchema;
 
 /// The primary error enum representing all failure modes in the application.
 #[derive(Debug, Error)]
@@ -39,10 +40,13 @@ pub enum AppError {
 }
 
 /// Standardized JSON structure sent back to API clients on failure.
-#[derive(Serialize)]
-struct ErrorResponseBody {
+#[derive(Serialize, ToSchema)]
+pub struct ErrorResponseBody {
+    #[schema(example = "BAD_REQUEST")]
     error_code: &'static str,
+    #[schema(example = "SKU cannot be empty")]
     message: String,
+    #[schema(example = 400)]
     status: u16,
 }
 

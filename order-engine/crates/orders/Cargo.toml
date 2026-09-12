@@ -22,3 +22,6 @@ chrono = { workspace = true }
 
 # Logging
 log = { workspace = true }
+
+# OpenAPI v3 spec generator and embedded swagger UI
+utoipa = { workspace = true }

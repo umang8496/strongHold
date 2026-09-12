@@ -13,6 +13,9 @@ use uuid::Uuid;
 
 use crate::dto::{CreateProductRequest, UpdateProductRequest};
 use crate::service;
+use crate::dto::ProductResponse;
+
+use common::error::{ErrorResponseBody};
 
 /// Query parameters for GET /api/v1/products
 #[derive(Debug, Deserialize)]
@@ -23,6 +26,18 @@ pub struct ProductQueryFilter {
     pub max_price: Option<i64>,
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/products",
+    request_body = CreateProductRequest,
+    responses(
+        (status = 201, description = "Product created successfully", body = ProductResponse),
+        (status = 400, description = "Validation error", body = ErrorResponseBody),
+        (status = 409, description = "SKU already exists", body = ErrorResponseBody),
+        (status = 500, description = "Internal server error", body = ErrorResponseBody)
+    ),
+    tag = "Catalog"
+)]
 #[post("/products")]
 pub async fn create_product_handler(
     pool: web::Data<DbPool>,
@@ -32,6 +47,19 @@ pub async fn create_product_handler(
     Ok(HttpResponse::Created().json(product))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/products/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Product unique identifier")
+    ),
+    responses(
+        (status = 200, description = "Product found", body = ProductResponse),
+        (status = 404, description = "Product not found", body = ErrorResponseBody),
+        (status = 500, description = "Internal server error", body = ErrorResponseBody)
+    ),
+    tag = "Catalog"
+)]
 #[get("/products/{id}")]
 pub async fn get_product_handler(
     pool: web::Data<DbPool>,
@@ -42,6 +70,16 @@ pub async fn get_product_handler(
     Ok(HttpResponse::Ok().json(product))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/products",
+    responses(
+        (status = 200, description = "List of all the products", body = ProductResponse),
+        (status = 404, description = "Product not found", body = ErrorResponseBody),
+        (status = 500, description = "Internal server error", body = ErrorResponseBody)
+    ),
+    tag = "Catalog"
+)]
 #[get("/products")]
 pub async fn list_products_handler(
     pool: web::Data<DbPool>,
@@ -62,6 +100,16 @@ pub async fn list_products_handler(
     Ok(HttpResponse::Ok().json(products))
 }
 
+#[utoipa::path(
+    patch,
+    path = "/api/v1/products/{id}",
+    responses(
+        (status = 200, description = "Updates the given product", body = ProductResponse),
+        (status = 404, description = "Product not found", body = ErrorResponseBody),
+        (status = 500, description = "Internal server error", body = ErrorResponseBody)
+    ),
+    tag = "Catalog"
+)]
 #[patch("/products/{id}")]
 pub async fn update_product_handler(
     pool: web::Data<DbPool>,
@@ -73,6 +121,16 @@ pub async fn update_product_handler(
     Ok(HttpResponse::Ok().json(updated))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/v1/products/{id}",
+    responses(
+        (status = 204, description = "Deletes the given product", body = ProductResponse),
+        (status = 404, description = "Product not found", body = ErrorResponseBody),
+        (status = 500, description = "Internal server error", body = ErrorResponseBody)
+    ),
+    tag = "Catalog"
+)]
 #[delete("/products/{id}")]
 pub async fn delete_product_handler(
     pool: web::Data<DbPool>,

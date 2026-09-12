@@ -19,3 +19,7 @@ tokio = { workspace = true }
 dotenvy = { workspace = true }
 env_logger = { workspace = true }
 log = { workspace = true }
+
+# OpenAPI v3 spec generator and embedded swagger UI
+utoipa = { workspace = true }
+utoipa-swagger-ui = { workspace = true }

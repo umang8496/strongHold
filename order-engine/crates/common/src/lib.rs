@@ -9,4 +9,4 @@ pub mod error;
 
 // Re-export core error types at the root of the crate for ergonomics.
 // Callers can do `use common::{AppError, AppResult};` directly.
-pub use error::{AppError, AppResult};
+pub use error::{AppError, AppResult, ErrorResponseBody};

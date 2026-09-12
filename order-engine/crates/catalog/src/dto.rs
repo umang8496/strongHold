@@ -9,15 +9,24 @@ use chrono::{DateTime, Utc};
 use common::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use utoipa::ToSchema;
 
 use crate::models::Product;
 
 /// Payload received when creating a new product via POST /api/v1/products
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
+#[schema(as = catalog::CreateProductRequest)]
 pub struct CreateProductRequest {
+    #[schema(example = "KB-MECH-01")]
     pub sku: String,
+
+    #[schema(example = "Custom Mechanical Keyboard")]
     pub title: String,
+
+    #[schema(example = "Hot-swappable tactile switch keyboard")]
     pub description: Option<String>,
+
+    #[schema(example = 12900)]
     pub price_cents: i64,
 }
 
@@ -40,11 +49,23 @@ impl CreateProductRequest {
 }
 
 /// Payload received when updating a product via PATCH /api/v1/products/{id}
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
+#[schema(as = catalog::UpdateProductRequest)]
 pub struct UpdateProductRequest {
+    /// Title for the product that to be updated
+    #[schema(example = "Custom Mechanical Keyboard V2")]
     pub title: Option<String>,
+
+    /// Description for the product that to be updated
+    #[schema(example = "Hot-swappable mechanical keyboard with tactile switches")]
     pub description: Option<String>,
+
+    /// Price for the product that to be updated
+    #[schema(example = 13900)]
     pub price_cents: Option<i64>,
+
+    /// Active status for the product that to be updated
+    #[schema(example = "True or False")]
     pub is_active: Option<bool>,
 }
 
@@ -67,15 +88,41 @@ impl UpdateProductRequest {
 }
 
 /// Standardized JSON response returned to clients representing a product.
-#[derive(Debug, Serialize)]
+/// Represents a sellable physical product in the catalog.
+/// Markdown written in docstrings is automatically transferred to OpenAPI descriptions.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[schema(as = catalog::ProductResponse)]
 pub struct ProductResponse {
+    /// Universally unique identifier of the catalog item.
+    #[schema(example = "a1a2a3a4-b1b2-c1c2-d1d2-d3d4d5d6d7d8")]
     pub id: Uuid,
+
+    /// Unique Stock Keeping Unit (alphanumeric identifier).
+    #[schema(example = "KB-MECH-01", max_length = 64, min_length = 3)]
     pub sku: String,
+
+    /// Display title for retail presentation.
+    #[schema(example = "Mechanical Keyboard V2", max_length = 255)]
     pub title: String,
+
+    /// Extended markdown-compatible product description.
+    #[schema(example = "Hot-swappable mechanical keyboard featuring tactile switches.")]
     pub description: Option<String>,
+
+    /// Retail cost stored in the smallest fractional unit (cents) to avoid precision loss.
+    #[schema(example = 12900, minimum = 0)]
     pub price_cents: i64,
+
+    /// Flag designating whether the product is queryable by standard customers.
+    #[schema(default = true)]
     pub is_active: bool,
+
+    /// Creation timestamp in RFC 3339 format.
+    #[schema(value_type = String, format = DateTime, example = "2026-03-31T08:30:00Z")]
     pub created_at: DateTime<Utc>,
+
+    /// Update timestamp in RFC 3339 format.
+    #[schema(value_type = String, format = DateTime, example = "2026-03-31T08:30:00Z")]
     pub updated_at: DateTime<Utc>,
 }
 

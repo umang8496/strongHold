@@ -138,3 +138,7 @@ log = "0.4"
 # - Configured via environment variables (e.g., RUST_LOG=info or RUST_LOG=catalog=debug).
 # - Formats log records with timestamps and prints them directly to stdout/stderr.
 env_logger = "0.11"
+
+# OpenAPI v3 spec generator and embedded Swagger UI
+utoipa = { version = "5.3", features = ["actix_extras", "chrono", "uuid"] }
+utoipa-swagger-ui = { version = "9.0", features = ["actix-web"] }
