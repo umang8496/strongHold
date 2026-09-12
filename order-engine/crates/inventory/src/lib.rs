@@ -1,14 +1,8 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+pub mod controller;
+pub mod dto;
+pub mod models;
+pub mod repository;
+pub mod service;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use controller::configure_routes;
+pub use service::{InventoryPort, LocalInventoryService};
