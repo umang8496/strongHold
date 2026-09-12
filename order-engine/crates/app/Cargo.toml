@@ -1,0 +1,19 @@
+[package]
+name = "app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Internal workspace domain & infrastructure crates
+catalog = { path = "../catalog" }
+common = { path = "../common" }
+database = { path = "../database" }
+
+# Web Framework & Async Runtime
+actix-web = { workspace = true }
+tokio = { workspace = true }
+
+# Environment & Logging
+dotenvy = { workspace = true }
+env_logger = { workspace = true }
+log = { workspace = true }
