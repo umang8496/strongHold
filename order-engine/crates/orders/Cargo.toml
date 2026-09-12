@@ -1,6 +1,24 @@
 [package]
 name = "orders"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
+# Internal workspace crates
+common = { path = "../common" }
+database = { path = "../database" }
+catalog = { path = "../catalog" }
+inventory = { path = "../inventory" }
+
+# Database & Web Framework
+diesel = { workspace = true }
+actix-web = { workspace = true }
+
+# Serialization & Types
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+# Logging
+log = { workspace = true }
