@@ -7,6 +7,9 @@ edition = "2021"
 # Inherit web framework to implement Actix's ResponseError trait
 actix-web = { workspace = true }
 
+# Inherit diesel framework to derive Error traits
+diesel = { workspace = true }
+
 # Inherit thiserror to derive standard Error traits
 thiserror = { workspace = true }
 
