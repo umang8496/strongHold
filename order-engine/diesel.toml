@@ -1,15 +1,66 @@
 # ==============================================================================
-# Diesel CLI Configuration
+# Diesel CLI Configuration (diesel.toml)
+# ==============================================================================
+# This configuration file controls the behavior of the `diesel` command-line tool.
+# Whenever commands such as `diesel migration run`, `diesel migration revert`,
+# or `diesel print-schema` are executed, the CLI reads this file to determine:
+#
+#   1. Where to locate and apply SQL migrations.
+#   2. Which database schemas/namespaces to inspect.
+#   3. Where to write the generated compile-time Rust schema definition file.
+#   4. Which Rust types to import into that generated file.
 # ==============================================================================
 
 [print_schema]
+# ------------------------------------------------------------------------------
+# Output Target for Auto-Generated Rust Schema
+# ------------------------------------------------------------------------------
+# In a single-crate project, Diesel defaults to outputting to `src/schema.rs`.
+# Because our architecture is a Cargo Workspace with bounded domains, the schema
+# must reside within our dedicated infrastructure crate (`database`).
+# This ensures `crates/database/src/lib.rs` can export the generated tables,
+# which other domain crates (`catalog`, `inventory`, `orders`) can then consume.
 file = "crates/database/src/schema.rs"
 
-# Instruct Diesel to introspect all our domain schemas instead of just 'public'
+# ------------------------------------------------------------------------------
+# PostgreSQL Schema Target
+# ------------------------------------------------------------------------------
+# By default, PostgreSQL puts all tables under the 'public' schema, and Diesel CLI
+# only introspects 'public'.
+# 
+# Setting `schema = "catalog"` tells Diesel CLI to introspect the `catalog`
+# PostgreSQL namespace instead of `public`.
+#
+# NOTE FOR MULTI-SCHEMA ARCHITECTURES:
+# When you have multiple custom schemas (e.g., catalog, inventory, orders), 
+# Diesel CLI accepts a single schema here. When you want to generate schemas for
+# all namespaces, you can either:
+#   1. Run print-schema per schema via CLI:
+#      diesel print-schema --schema catalog >> crates/database/src/schema.rs
+#      diesel print-schema --schema inventory >> crates/database/src/schema.rs
+#   2. Or leave this commented out / set to public if tables use a search path.
+# For now, targeting "catalog" ensures our initial catalog domain tables generate properly.
 schema = "catalog"
 
-# Ensure Diesel imports UUID and Chrono types so the macro knows how to map them
-import_types = ["diesel::sql_types::*"]
+# ------------------------------------------------------------------------------
+# SQL Types Imported into the Generated schema.rs
+# ------------------------------------------------------------------------------
+# When Diesel translates PostgreSQL columns into Rust types, it requires matching
+# SQL types in scope (e.g., `diesel::sql_types::Uuid`, `diesel::sql_types::Timestamptz`).
+#
+# By specifying imports here, Diesel prepends `use <import>;` lines at the top of 
+# `crates/database/src/schema.rs`.
+# We import all standard Diesel SQL types. If custom PostgreSQL ENUMs or extensions
+# are added later, their Rust mappings are declared here as well.
+import_types = [
+    "diesel::sql_types::*",
+]
 
 [migrations_directory]
+# ------------------------------------------------------------------------------
+# Migrations Location
+# ------------------------------------------------------------------------------
+# Specifies the directory relative to the repository root where migration files
+# live. Each sub-directory inside `migrations/` contains an `up.sql` (forward 
+# schema migration) and a `down.sql` (rollback/reversion script).
 dir = "migrations"

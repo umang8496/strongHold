@@ -1,61 +1,140 @@
 # ==============================================================================
-# Root Workspace Manifest
+# Root Workspace Manifest (order_engine)
 # ==============================================================================
-# This file does not build a binary itself. It coordinates sub-crates, manages
-# shared dependency versions, and establishes workspace-wide compiler settings.
+# In a multi-crate Rust architecture, the root Cargo.toml coordinates all member
+# crates under a single umbrella. It does not produce a runnable binary or library
+# directly; instead, it acts as a central control plane for build orchestration,
+# unified compilation targets, and centralized dependency management.
 # ==============================================================================
 
 [workspace]
-# Tell Cargo where each member crate lives on the filesystem.
+# ------------------------------------------------------------------------------
+# Workspace Members
+# ------------------------------------------------------------------------------
+# Lists all sub-crates belonging to this project. Cargo treats each member as an
+# independent compilation unit with its own Cargo.toml, while sharing a single
+# unified `Cargo.lock` file and a single `target/` directory at the project root.
+#
+# Architectural benefits:
+# 1. Faster builds: Cargo caches artifacts across member crates.
+# 2. Compile-time isolation: Crates cannot import one another without explicit
+#    dependency declarations, preventing accidental tight coupling.
+# ------------------------------------------------------------------------------
 members = [
-    "crates/app",
-    "crates/catalog",
-    "crates/common",
-    "crates/database",
-    "crates/inventory",
-    "crates/orders",
+    "crates/app",       # Binary crate: Hosts Actix-web server, route registry, composition root
+    "crates/catalog",   # Domain library: Products, pricing rules, catalog query logic
+    "crates/common",    # Utility library: Shared AppError, AppResult, pagination helpers
+    "crates/database",  # Infrastructure library: r2d2 pool, migrations, generated schema.rs
+    "crates/inventory", # Domain library: Stock levels, reservations, concurrency locks
+    "crates/orders",    # Domain library: Order lifecycle, checkouts, state machines
 ]
 
-# Use Resolver version 2 (standard for modern Rust 2021 edition).
-# Resolver 2 avoids unifying crate features across dev-dependencies and build targets.
+# ------------------------------------------------------------------------------
+# Feature Resolver Version
+# ------------------------------------------------------------------------------
+# "2" is the modern feature resolver introduced in Rust 2021 edition.
+#
+# Why this is critical:
+# Under Resolver 1, if one crate requested a dependency with a feature enabled
+# solely for tests or build scripts, Cargo would forcefully unify that feature
+# across ALL crates, including your production binary build.
+#
+# Resolver 2 stops this leakage: it separates dev-dependencies, build-dependencies,
+# and regular target dependencies so production builds only include features
+# explicitly activated for target compilation.
+# ------------------------------------------------------------------------------
 resolver = "2"
 
+# ------------------------------------------------------------------------------
+# Workspace Dependency Inheritance ([workspace.dependencies])
+# ------------------------------------------------------------------------------
+# This table defines the single source of truth for third-party library versions
+# across the entire project.
+#
+# Why this matters:
+# 1. Version Drift Prevention: Avoids subtle runtime bugs where, for instance,
+#    `catalog` depends on serde 1.0.190 and `orders` depends on 1.0.200.
+# 2. Lean Binaries: Prevents Cargo from compiling duplicate versions of the same
+#    crate into the final executable.
+# 3. Easy Upgrades: Updating a dependency version here updates it across all member
+#    crates that import it using `{ workspace = true }`.
+# ------------------------------------------------------------------------------
 [workspace.dependencies]
+
 # --- Web Framework & Async Runtime ---
-# actix-web: Handles HTTP server, routing, extractors, and worker thread lifecycle.
+
+# actix-web: A high-performance, actor-less, asynchronous web framework built on Tokio.
+# - Provides HTTP request routing, typed extractors (Path, Query, Json), middleware,
+#   and the ResponseError trait that powers our centralized error mapping.
 actix-web = "4.9"
-# tokio: Multi-threaded async runtime underpinning modern Rust async I/O.
+
+# tokio: The de-facto asynchronous runtime for Rust.
+# Features:
+#   - macros: Enables the #[tokio::main] attribute to launch async runtimes easily.
+#   - rt-multi-thread: Spawns a work-stealing thread pool across CPU cores for
+#     handling asynchronous I/O tasks concurrently.
 tokio = { version = "1.40", features = ["macros", "rt-multi-thread"] }
 
 # --- Database & Persistence ---
-# diesel: Compile-time checked ORM and query builder for PostgreSQL.
+
+# diesel: A safe, zero-cost abstraction, compile-time checked ORM and query builder.
 # Features:
-#   - postgres: Enables the PostgreSQL backend driver.
-#   - r2d2: Enables synchronous connection pooling for multithreaded environments.
-#   - chrono: Maps PostgreSQL TIMESTAMP/TIMESTAMPTZ to chrono::DateTime.
-#   - uuid: Maps PostgreSQL UUID types to uuid::Uuid.
+#   - postgres: Links against PostgreSQL client libraries (libpq) and enables Postgres types.
+#   - r2d2: Integrates connection pool management directly with Diesel's connection handling.
+#   - chrono: Enables bidirectional mapping between Postgres TIMESTAMPTZ and chrono::DateTime.
+#   - uuid: Maps Postgres native UUID columns directly to uuid::Uuid structs.
 diesel = { version = "2.2", features = ["postgres", "r2d2", "chrono", "uuid"] }
-# r2d2: Standalone pool manager (Diesel exposes its integration via diesel::r2d2).
+
+# r2d2: Generic connection pool library.
+# - Keeps an active pool of open PostgreSQL connections alive in memory.
+# - Eliminates the latency of opening a fresh TCP/SSL handshake on every HTTP request.
 r2d2 = "0.8"
 
-# --- Serialization & Types ---
-# serde: Universal serialization/deserialization framework.
+# --- Serialization & Data Transformation ---
+
+# serde: Framework for serializing and deserializing Rust data structures efficiently.
+# Features:
+#   - derive: Provides procedural macros `#[derive(Serialize, Deserialize)]` to
+#     automatically generate JSON parsing code at compile-time with zero runtime reflection.
 serde = { version = "1.0", features = ["derive"] }
-# serde_json: Reading and writing JSON bodies for HTTP APIs.
+
+# serde_json: Provides JSON serialization/deserialization specifically tailored for Serde.
+# - Used to parse incoming HTTP request bodies and format outgoing API responses/errors.
 serde_json = "1.0"
-# uuid: Generating and parsing unique identifiers.
+
+# --- Common Data Types ---
+
+# uuid: Implements Universally Unique Identifiers (UUIDs).
+# Features:
+#   - v4: Generates cryptographically secure, random 128-bit UUIDs without centralized sequences.
+#   - serde: Allows UUID fields to serialize directly into standard JSON strings (and vice-versa).
 uuid = { version = "1.10", features = ["v4", "serde"] }
-# chrono: Date and time utilities with serialization support.
+
+# chrono: Robust date and time library for Rust.
+# Features:
+#   - serde: Allows DateTime<Utc> to serialize/deserialize to and from ISO-8601 strings.
 chrono = { version = "0.4", features = ["serde"] }
 
-# --- Error Handling & Environment ---
-# thiserror: Ergonomic derive macro for custom standard library Error types.
+# --- Error Management & Environment ---
+
+# thiserror: Provides derive macros for the standard library's `std::error::Error` trait.
+# - Eliminates manual boilerplate for `Display` and error source delegation.
+# - Powers our centralized `AppError` enum in `crates/common`.
 thiserror = "1.0"
-# dotenvy: A maintained fork of dotenv to load environment variables from .env files.
+
+# dotenvy: A modern, actively-maintained fork of the `dotenv` crate.
+# - Reads key-value pairs from the `.env` file at runtime startup and injects them
+#   into the process environment variables (e.g., DATABASE_URL, SERVER_PORT).
 dotenvy = "0.15"
 
-# --- Structured Logging & Observability ---
-# env_logger: Lightweight logger initialized via environment variable (e.g., RUST_LOG=info).
-env_logger = "0.11"
-# log: Standard logging facade providing macros like info!(), warn!(), error!().
+# --- Observability & Logging ---
+
+# log: A lightweight logging facade providing the standard logging macros:
+# error!(), warn!(), info!(), debug!(), and trace!().
+# Member crates invoke these macros without worrying about how or where logs are sent.
 log = "0.4"
+
+# env_logger: A logging implementation (backend) that connects to the `log` facade.
+# - Configured via environment variables (e.g., RUST_LOG=info or RUST_LOG=catalog=debug).
+# - Formats log records with timestamps and prints them directly to stdout/stderr.
+env_logger = "0.11"
