@@ -18,3 +18,21 @@ pub mod catalog {
         }
     }
 }
+// @generated automatically by Diesel CLI.
+
+pub mod inventory {
+    diesel::table! {
+        use diesel::sql_types::*;
+
+        inventory.stocks (id) {
+            id -> Uuid,
+            product_id -> Uuid,
+            #[max_length = 32]
+            warehouse_code -> Varchar,
+            available_quantity -> Int4,
+            reserved_quantity -> Int4,
+            created_at -> Timestamptz,
+            updated_at -> Timestamptz,
+        }
+    }
+}
