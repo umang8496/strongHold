@@ -44,8 +44,10 @@ pub enum AppError {
 pub struct ErrorResponseBody {
     #[schema(example = "BAD_REQUEST")]
     error_code: &'static str,
+
     #[schema(example = "SKU cannot be empty")]
     message: String,
+
     #[schema(example = 400)]
     status: u16,
 }
@@ -58,22 +60,23 @@ impl ResponseError for AppError {
             AppError::BadRequest(_) => StatusCode::BAD_REQUEST,
             AppError::Conflict(_) => StatusCode::CONFLICT,
             AppError::Database(DieselError::NotFound) => StatusCode::NOT_FOUND,
-            AppError::Database(_) | AppError::DatabaseError(_) | AppError::Internal(_) => {
-                StatusCode::INTERNAL_SERVER_ERROR
-            }
+            AppError::Database(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR
         }
     }
 
     /// Constructs the final HTTP response sent over the wire.
     fn error_response(&self) -> HttpResponse {
-        let status = self.status_code();
+        let status: StatusCode = self.status_code();
 
-        let error_code = match self {
+        let error_code: &str = match self {
             AppError::NotFound(_) => "NOT_FOUND",
             AppError::BadRequest(_) => "BAD_REQUEST",
             AppError::Conflict(_) => "CONFLICT",
             AppError::Database(DieselError::NotFound) => "NOT_FOUND",
-            AppError::Database(_) | AppError::DatabaseError(_) => "DATABASE_ERROR",
+            AppError::Database(_) => "DATABASE_ERROR",
+            AppError::DatabaseError(_) => "DATABASE_ERROR",
             AppError::Internal(_) => "INTERNAL_SERVER_ERROR",
         };
 

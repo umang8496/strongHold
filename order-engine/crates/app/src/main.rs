@@ -67,6 +67,7 @@ async fn main() -> std::io::Result<()> {
     if !database_url.is_empty() {
         debug!("Database URL has been fetched successfully");
     } else {
+        warn!("This is a warning, the server will not respond");
         error!("Database URL has not been fetched successfully");
     }
 

@@ -9,6 +9,7 @@
 use common::{AppError, AppResult};
 use diesel::pg::PgConnection;
 use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
+use r2d2::Error;
 
 /// Type alias for the r2d2 Connection Manager bound to PostgreSQL.
 pub type PgManager = ConnectionManager<PgConnection>;
@@ -27,7 +28,7 @@ pub type DbConn = PooledConnection<PgManager>;
 /// * `database_url` - The full PostgreSQL connection string (e.g., "postgres://user:pass@localhost:5432/order_engine")
 /// * `max_size` - Maximum number of active connections maintained in the pool
 pub fn establish_pool(database_url: &str, max_size: u32) -> Result<DbPool, r2d2::Error> {
-    let manager = ConnectionManager::<PgConnection>::new(database_url);
+    let manager: PgManager = ConnectionManager::<PgConnection>::new(database_url);
 
     Pool::builder()
         .max_size(max_size)
@@ -37,7 +38,7 @@ pub fn establish_pool(database_url: &str, max_size: u32) -> Result<DbPool, r2d2:
 /// Helper function to safely extract a connection from the pool,
 /// mapping pool checkout timeouts to `AppError::Internal`.
 pub fn get_conn(pool: &DbPool) -> AppResult<DbConn> {
-    pool.get().map_err(|err| {
+    pool.get().map_err(|err: Error| {
         log::error!("Failed to check out connection from pool: {}", err);
         AppError::Internal("Database connection pool exhausted".to_string())
     })
@@ -63,3 +64,26 @@ pub fn map_diesel_error(err: diesel::result::Error, entity_name: &'static str) -
         }
     }
 }
+
+/* Types defind in "diesel::result::Error"
+        pub enum Error {
+            InvalidCString(NulError),
+            DatabaseError(
+                DatabaseErrorKind,
+                Box<dyn DatabaseErrorInformation + Send + Sync>,
+            ),
+            NotFound,
+            QueryBuilderError(Box<dyn StdError + Send + Sync>),
+            DeserializationError(Box<dyn StdError + Send + Sync>),
+            SerializationError(Box<dyn StdError + Send + Sync>),
+            RollbackErrorOnCommit {
+                rollback_error: Box<Error>,
+                commit_error: Box<Error>,
+            },
+            RollbackTransaction,
+            AlreadyInTransaction,
+            NotInTransaction,
+            BrokenTransactionManager,
+            IntegerConversion(core::num::TryFromIntError),
+        }
+*/

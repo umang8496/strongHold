@@ -11,9 +11,8 @@ use database::DbPool;
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::dto::{CreateProductRequest, UpdateProductRequest};
+use crate::dto::{CreateProductRequest, ProductResponse, UpdateProductRequest};
 use crate::service;
-use crate::dto::ProductResponse;
 
 use common::error::{ErrorResponseBody};
 
@@ -43,7 +42,7 @@ pub async fn create_product_handler(
     pool: web::Data<DbPool>,
     payload: web::Json<CreateProductRequest>,
 ) -> AppResult<HttpResponse> {
-    let product = service::create_product(pool, payload.into_inner()).await?;
+    let product: ProductResponse = service::create_product(pool, payload.into_inner()).await?;
     Ok(HttpResponse::Created().json(product))
 }
 
@@ -65,8 +64,8 @@ pub async fn get_product_handler(
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
 ) -> AppResult<HttpResponse> {
-    let product_id = path.into_inner();
-    let product = service::get_product_by_id(pool, product_id).await?;
+    let product_id: Uuid = path.into_inner();
+    let product: ProductResponse = service::get_product_by_id(pool, product_id).await?;
     Ok(HttpResponse::Ok().json(product))
 }
 
@@ -85,8 +84,8 @@ pub async fn list_products_handler(
     pool: web::Data<DbPool>,
     query: web::Query<ProductQueryFilter>,
 ) -> AppResult<HttpResponse> {
-    let page = query.page.unwrap_or(1);
-    let page_size = query.page_size.unwrap_or(20);
+    let page: i64 = query.page.unwrap_or(1);
+    let page_size: i64 = query.page_size.unwrap_or(20);
 
     let products = service::list_products(
         pool,
@@ -116,8 +115,8 @@ pub async fn update_product_handler(
     path: web::Path<Uuid>,
     payload: web::Json<UpdateProductRequest>,
 ) -> AppResult<HttpResponse> {
-    let product_id = path.into_inner();
-    let updated = service::update_product(pool, product_id, payload.into_inner()).await?;
+    let product_id: Uuid = path.into_inner();
+    let updated: ProductResponse = service::update_product(pool, product_id, payload.into_inner()).await?;
     Ok(HttpResponse::Ok().json(updated))
 }
 
@@ -136,7 +135,7 @@ pub async fn delete_product_handler(
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
 ) -> AppResult<HttpResponse> {
-    let product_id = path.into_inner();
+    let product_id: Uuid = path.into_inner();
     service::delete_product(pool, product_id).await?;
     Ok(HttpResponse::NoContent().finish())
 }
