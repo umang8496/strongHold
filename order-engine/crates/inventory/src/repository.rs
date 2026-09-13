@@ -32,7 +32,7 @@ pub fn adjust_available_stock(
     prod_id: Uuid,
     qty_delta: i32,
 ) -> AppResult<Stock> {
-    let result = diesel::update(stocks.filter(product_id.eq(prod_id)))
+    let result: Stock = diesel::update(stocks.filter(product_id.eq(prod_id)))
         .set((
             available_quantity.eq(available_quantity + qty_delta),
             updated_at.eq(chrono::Utc::now()),
@@ -48,12 +48,8 @@ pub fn adjust_available_stock(
 /// Moves quantity from `available_quantity` to `reserved_quantity` in a single SQL operation.
 /// The `filter(available_quantity.ge(qty))` clause guarantees that even under extreme
 /// concurrent requests, PostgreSQL locks the row and only succeeds if there is sufficient stock.
-pub fn reserve_stock_atomic(
-    conn: &mut PgConnection,
-    prod_id: Uuid,
-    qty: i32,
-) -> AppResult<Stock> {
-    let affected = diesel::update(
+pub fn reserve_stock_atomic(conn: &mut PgConnection, prod_id: Uuid, qty: i32) -> AppResult<Stock> {
+    let affected: Result<Stock, diesel::result::Error> = diesel::update(
         stocks
             .filter(product_id.eq(prod_id))
             .filter(available_quantity.ge(qty)), // Atomic invariant guard
@@ -84,7 +80,7 @@ pub fn release_reservation_atomic(
     prod_id: Uuid,
     qty: i32,
 ) -> AppResult<Stock> {
-    let affected = diesel::update(
+    let affected: Result<Stock, diesel::result::Error> = diesel::update(
         stocks
             .filter(product_id.eq(prod_id))
             .filter(reserved_quantity.ge(qty)),
@@ -98,12 +94,10 @@ pub fn release_reservation_atomic(
 
     match affected {
         Ok(stock) => Ok(stock),
-        Err(diesel::result::Error::NotFound) => {
-            Err(AppError::Conflict(format!(
-                "Cannot release {} units: reserved quantity insufficient for product {}",
-                qty, prod_id
-            )))
-        }
+        Err(diesel::result::Error::NotFound) => Err(AppError::Conflict(format!(
+            "Cannot release {} units: reserved quantity insufficient for product {}",
+            qty, prod_id
+        ))),
         Err(err) => Err(map_diesel_error(err, "Stock")),
     }
 }

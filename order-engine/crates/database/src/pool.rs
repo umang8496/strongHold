@@ -30,9 +30,7 @@ pub type DbConn = PooledConnection<PgManager>;
 pub fn establish_pool(database_url: &str, max_size: u32) -> Result<DbPool, r2d2::Error> {
     let manager: PgManager = ConnectionManager::<PgConnection>::new(database_url);
 
-    Pool::builder()
-        .max_size(max_size)
-        .build(manager)
+    Pool::builder().max_size(max_size).build(manager)
 }
 
 /// Helper function to safely extract a connection from the pool,
@@ -49,15 +47,11 @@ pub fn get_conn(pool: &DbPool) -> AppResult<DbConn> {
 /// query failures to `AppError::DatabaseError`.
 pub fn map_diesel_error(err: diesel::result::Error, entity_name: &'static str) -> AppError {
     match err {
-        diesel::result::Error::NotFound => {
-            AppError::NotFound(format!("{} not found", entity_name))
-        }
+        diesel::result::Error::NotFound => AppError::NotFound(format!("{} not found", entity_name)),
         diesel::result::Error::DatabaseError(
             diesel::result::DatabaseErrorKind::UniqueViolation,
             info,
-        ) => {
-            AppError::Conflict(format!("Duplicate entry: {}", info.message()))
-        }
+        ) => AppError::Conflict(format!("Duplicate entry: {}", info.message())),
         other => {
             log::error!("Diesel query execution error: {:?}", other);
             AppError::DatabaseError(other.to_string())

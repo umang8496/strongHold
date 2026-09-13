@@ -8,8 +8,8 @@
 use chrono::{DateTime, Utc};
 use common::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use utoipa::ToSchema;
+use uuid::Uuid;
 
 use crate::models::Product;
 

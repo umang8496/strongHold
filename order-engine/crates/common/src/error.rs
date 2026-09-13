@@ -62,7 +62,7 @@ impl ResponseError for AppError {
             AppError::Database(DieselError::NotFound) => StatusCode::NOT_FOUND,
             AppError::Database(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR
+            AppError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 

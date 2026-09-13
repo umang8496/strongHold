@@ -11,7 +11,7 @@ use database::{get_conn, DbPool};
 use uuid::Uuid;
 
 use crate::dto::{CreateProductRequest, ProductResponse, UpdateProductRequest};
-use crate::models::{NewProduct, UpdateProduct};
+use crate::models::{NewProduct, Product, UpdateProduct};
 use crate::repository;
 
 /// Handles product creation workflow:
@@ -38,7 +38,7 @@ pub async fn create_product(
         };
 
         // Persist via repository
-        let created = repository::insert_product(&mut conn, &new_product)?;
+        let created: Product = repository::insert_product(&mut conn, &new_product)?;
         Ok(ProductResponse::from(created))
     })
     .await
@@ -53,7 +53,7 @@ pub async fn get_product_by_id(
 ) -> AppResult<ProductResponse> {
     web::block(move || {
         let mut conn = get_conn(&pool)?;
-        let product = repository::find_product_by_id(&mut conn, product_id)?;
+        let product: Product = repository::find_product_by_id(&mut conn, product_id)?;
         Ok(ProductResponse::from(product))
     })
     .await
@@ -70,9 +70,8 @@ pub async fn list_products(
 ) -> AppResult<Vec<ProductResponse>> {
     web::block(move || {
         let mut conn = get_conn(&pool)?;
-        let products = repository::list_products(
-            &mut conn, page, page_size, min_price, max_price,
-        )?;
+        let products: Vec<Product> =
+            repository::list_products(&mut conn, page, page_size, min_price, max_price)?;
         Ok(products.into_iter().map(ProductResponse::from).collect())
     })
     .await
@@ -98,7 +97,7 @@ pub async fn update_product(
             updated_at: Some(chrono::Utc::now()),
         };
 
-        let updated = repository::update_product(&mut conn, product_id, &changes)?;
+        let updated: Product = repository::update_product(&mut conn, product_id, &changes)?;
         Ok(ProductResponse::from(updated))
     })
     .await
@@ -106,10 +105,7 @@ pub async fn update_product(
 }
 
 /// Soft-deletes a product by marking it inactive.
-pub async fn delete_product(
-    pool: web::Data<DbPool>,
-    product_id: Uuid,
-) -> AppResult<()> {
+pub async fn delete_product(pool: web::Data<DbPool>, product_id: Uuid) -> AppResult<()> {
     web::block(move || {
         let mut conn = get_conn(&pool)?;
         repository::soft_delete_product(&mut conn, product_id)

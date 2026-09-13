@@ -14,7 +14,7 @@ use uuid::Uuid;
 use crate::dto::{CreateProductRequest, ProductResponse, UpdateProductRequest};
 use crate::service;
 
-use common::error::{ErrorResponseBody};
+use common::error::ErrorResponseBody;
 
 /// Query parameters for GET /api/v1/products
 #[derive(Debug, Deserialize)]
@@ -87,14 +87,8 @@ pub async fn list_products_handler(
     let page: i64 = query.page.unwrap_or(1);
     let page_size: i64 = query.page_size.unwrap_or(20);
 
-    let products = service::list_products(
-        pool,
-        page,
-        page_size,
-        query.min_price,
-        query.max_price,
-    )
-    .await?;
+    let products =
+        service::list_products(pool, page, page_size, query.min_price, query.max_price).await?;
 
     Ok(HttpResponse::Ok().json(products))
 }
@@ -116,7 +110,8 @@ pub async fn update_product_handler(
     payload: web::Json<UpdateProductRequest>,
 ) -> AppResult<HttpResponse> {
     let product_id: Uuid = path.into_inner();
-    let updated: ProductResponse = service::update_product(pool, product_id, payload.into_inner()).await?;
+    let updated: ProductResponse =
+        service::update_product(pool, product_id, payload.into_inner()).await?;
     Ok(HttpResponse::Ok().json(updated))
 }
 

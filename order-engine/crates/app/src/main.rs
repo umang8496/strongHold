@@ -62,8 +62,8 @@ async fn main() -> std::io::Result<()> {
     info!("Bootstrapping Order Engine Modular Monolith...");
 
     // 3. Extract runtime configuration
-    let database_url: String = env::var("DATABASE_URL")
-        .expect("DATABASE_URL environment variable must be set in .env");
+    let database_url: String =
+        env::var("DATABASE_URL").expect("DATABASE_URL environment variable must be set in .env");
     if !database_url.is_empty() {
         debug!("Database URL has been fetched successfully");
     } else {
@@ -79,7 +79,7 @@ async fn main() -> std::io::Result<()> {
     // 4. Initialize the PostgreSQL connection pool (max 10 connections)
     info!("Connecting to PostgreSQL connection pool...");
     let pool = database::establish_pool(&database_url, 10)
-            .expect("Failed to create PostgreSQL connection pool");
+        .expect("Failed to create PostgreSQL connection pool");
 
     info!("Database connection pool successfully initialized.");
 
@@ -87,7 +87,8 @@ async fn main() -> std::io::Result<()> {
     let pool_data = web::Data::new(pool.clone());
 
     // Construct the concrete inventory service and bind it to the public port trait
-    let inventory_service: Arc<dyn InventoryPort> = Arc::new(LocalInventoryService::new(pool.clone()));
+    let inventory_service: Arc<dyn InventoryPort> =
+        Arc::new(LocalInventoryService::new(pool.clone()));
     let inventory_port_data: Data<Arc<dyn InventoryPort>> = web::Data::new(inventory_service);
 
     info!("Starting HTTP server on 127.0.0.1:{}...", server_port);

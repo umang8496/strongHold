@@ -2,14 +2,13 @@
 //! Inventory Service & Public Port Interface
 //! ==============================================================================
 
-
 use actix_web::web;
 use common::{AppError, AppResult};
 use database::{get_conn, DbPool};
 use uuid::Uuid;
 
 use crate::dto::{AdjustStockRequest, InitializeStockRequest, StockResponse};
-use crate::models::NewStock;
+use crate::models::{NewStock, Stock};
 use crate::repository;
 
 /// The public trait that other domains (like `orders`) use to talk to Inventory.
@@ -64,7 +63,7 @@ pub async fn initialize_stock(
             reserved_quantity: 0,
         };
 
-        let created = repository::insert_stock(&mut conn, &new_stock)?;
+        let created: Stock = repository::insert_stock(&mut conn, &new_stock)?;
         Ok(StockResponse::from(created))
     })
     .await
@@ -79,7 +78,7 @@ pub async fn adjust_stock(
 ) -> AppResult<StockResponse> {
     web::block(move || {
         let mut conn = get_conn(&pool)?;
-        let updated = repository::adjust_available_stock(&mut conn, product_id, req.delta)?;
+        let updated: Stock = repository::adjust_available_stock(&mut conn, product_id, req.delta)?;
         Ok(StockResponse::from(updated))
     })
     .await
@@ -87,13 +86,10 @@ pub async fn adjust_stock(
 }
 
 /// HTTP workflow to view stock by product_id
-pub async fn get_stock(
-    pool: web::Data<DbPool>,
-    product_id: Uuid,
-) -> AppResult<StockResponse> {
+pub async fn get_stock(pool: web::Data<DbPool>, product_id: Uuid) -> AppResult<StockResponse> {
     web::block(move || {
         let mut conn = get_conn(&pool)?;
-        let stock = repository::find_by_product_id(&mut conn, product_id)?;
+        let stock: Stock = repository::find_by_product_id(&mut conn, product_id)?;
         Ok(StockResponse::from(stock))
     })
     .await

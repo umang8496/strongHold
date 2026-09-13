@@ -2,7 +2,7 @@
 //! Orders Database Repository
 //! ==============================================================================
 
-use common::{AppResult};
+use common::AppResult;
 use database::map_diesel_error;
 use database::schema::orders::{order_items, orders};
 use diesel::prelude::*;

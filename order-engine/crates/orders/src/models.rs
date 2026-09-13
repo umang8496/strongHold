@@ -39,7 +39,10 @@ impl OrderStatus {
             "PAID" => Ok(OrderStatus::Paid),
             "COMPLETED" => Ok(OrderStatus::Completed),
             "CANCELED" => Ok(OrderStatus::Canceled),
-            unknown => Err(AppError::BadRequest(format!("Unknown order status: {}", unknown))),
+            unknown => Err(AppError::BadRequest(format!(
+                "Unknown order status: {}",
+                unknown
+            ))),
         }
     }
 

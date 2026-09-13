@@ -60,9 +60,7 @@ pub fn list_products(
     min_price: Option<i64>,
     max_price: Option<i64>,
 ) -> AppResult<Vec<Product>> {
-    let mut query = products
-        .filter(is_active.eq(true))
-        .into_boxed();
+    let mut query = products.filter(is_active.eq(true)).into_boxed();
 
     if let Some(min) = min_price {
         query = query.filter(price_cents.ge(min));

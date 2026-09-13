@@ -9,7 +9,7 @@ use inventory::InventoryPort;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::dto::CreateOrderRequest;
+use crate::dto::{CreateOrderRequest, OrderDetailResponse};
 use crate::service;
 
 #[post("/orders")]
@@ -18,7 +18,8 @@ pub async fn create_order_handler(
     inventory_port: web::Data<Arc<dyn InventoryPort>>,
     payload: web::Json<CreateOrderRequest>,
 ) -> AppResult<HttpResponse> {
-    let order = service::checkout(pool, inventory_port, payload.into_inner()).await?;
+    let order: OrderDetailResponse =
+        service::checkout(pool, inventory_port, payload.into_inner()).await?;
     Ok(HttpResponse::Created().json(order))
 }
 
@@ -27,8 +28,8 @@ pub async fn get_order_handler(
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
 ) -> AppResult<HttpResponse> {
-    let order_id = path.into_inner();
-    let order = service::get_order_by_id(pool, order_id).await?;
+    let order_id: Uuid = path.into_inner();
+    let order: OrderDetailResponse = service::get_order_by_id(pool, order_id).await?;
     Ok(HttpResponse::Ok().json(order))
 }
 
@@ -38,8 +39,8 @@ pub async fn cancel_order_handler(
     inventory_port: web::Data<Arc<dyn InventoryPort>>,
     path: web::Path<Uuid>,
 ) -> AppResult<HttpResponse> {
-    let order_id = path.into_inner();
-    let order = service::cancel_order(pool, inventory_port, order_id).await?;
+    let order_id: Uuid = path.into_inner();
+    let order: OrderDetailResponse = service::cancel_order(pool, inventory_port, order_id).await?;
     Ok(HttpResponse::Ok().json(order))
 }
 

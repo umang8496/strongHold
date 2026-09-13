@@ -11,7 +11,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::dto::{CreateOrderRequest, OrderDetailResponse};
-use crate::models::{NewOrder, NewOrderItem, OrderStatus};
+use crate::models::{NewOrder, NewOrderItem, Order, OrderItem, OrderStatus};
 use crate::repository;
 
 pub async fn checkout(
@@ -26,7 +26,7 @@ pub async fn checkout(
 
         // Run entire checkout within a single atomic database transaction
         conn.transaction::<OrderDetailResponse, AppError, _>(|tx_conn| {
-            let mut line_items_to_insert = Vec::new();
+            let mut line_items_to_insert: Vec<(Uuid, i32, i64)> = Vec::new();
             let mut total_cents: i64 = 0;
             let mut reserved_items: Vec<(Uuid, i32)> = Vec::new();
 
@@ -70,9 +70,12 @@ pub async fn checkout(
                 })
                 .collect();
 
-            let created_items = repository::insert_order_items(tx_conn, &items)?;
+            let created_items: Vec<OrderItem> = repository::insert_order_items(tx_conn, &items)?;
 
-            Ok(OrderDetailResponse::from_parts(created_order, created_items))
+            Ok(OrderDetailResponse::from_parts(
+                created_order,
+                created_items,
+            ))
         })
     })
     .await
@@ -85,8 +88,8 @@ pub async fn get_order_by_id(
 ) -> AppResult<OrderDetailResponse> {
     web::block(move || {
         let mut conn = get_conn(&pool)?;
-        let order = repository::find_order_by_id(&mut conn, order_id)?;
-        let items = repository::find_items_by_order_id(&mut conn, order_id)?;
+        let order: Order = repository::find_order_by_id(&mut conn, order_id)?;
+        let items: Vec<OrderItem> = repository::find_items_by_order_id(&mut conn, order_id)?;
         Ok(OrderDetailResponse::from_parts(order, items))
     })
     .await
@@ -102,8 +105,8 @@ pub async fn cancel_order(
         let mut conn = get_conn(&pool)?;
 
         conn.transaction::<OrderDetailResponse, AppError, _>(|tx_conn| {
-            let order = repository::find_order_by_id(tx_conn, order_id)?;
-            let current_status = OrderStatus::from_str(&order.status)?;
+            let order: Order = repository::find_order_by_id(tx_conn, order_id)?;
+            let current_status: OrderStatus = OrderStatus::from_str(&order.status)?;
 
             if !current_status.can_transition_to(OrderStatus::Canceled) {
                 return Err(AppError::BadRequest(format!(
@@ -121,11 +124,8 @@ pub async fn cancel_order(
                 }
             }
 
-            let updated_order = repository::update_order_status(
-                tx_conn,
-                order_id,
-                OrderStatus::Canceled.as_str(),
-            )?;
+            let updated_order: Order =
+                repository::update_order_status(tx_conn, order_id, OrderStatus::Canceled.as_str())?;
 
             Ok(OrderDetailResponse::from_parts(updated_order, items))
         })
