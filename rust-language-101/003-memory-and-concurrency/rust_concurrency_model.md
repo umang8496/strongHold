@@ -1057,3 +1057,1261 @@ fn main() {
 
 ---
 
+## Phase 4: Shared-State Concurrency & Locks
+
+Message passing coordinates threads through discrete values, but some architectures require sharing access to the exact same memory in place:  
+large in-memory caches, database connection pools, shared state graphs, or direct hardware buffers.
+
+Rust approaches shared state by enforcing strict encapsulation:  
+> **you cannot access the data without first acquiring the lock, and you cannot forget to release the lock when you are done.**
+
+### Module 4.1: Atomic Reference Counting (`Arc<T>`)
+
+Ordinary pointers (`&T`, `Box<T>`) assume a single static owner.  
+While `Rc<T>` enables multiple owners in single-threaded code, its internal reference counts are updated via ordinary arithmetic (`+ 1`), creating data races when invoked concurrently.
+
+`Arc<T>` (**Atomically Reference Counted pointer**) provides thread-safe shared ownership by placing the value on the heap alongside two atomic counters.
+
+```text
+       Stack (Thread 1)             Heap Allocation
+      +-----------------+         +---------------------------------------+
+      |  Arc<T> Clone   | ------> | - strong_count: AtomicUsize (e.g., 2) |
+      +-----------------+         | - weak_count:   AtomicUsize (e.g., 1) |
+                                  | - data:         T                     |
+       Stack (Thread 2)           +---------------------------------------+
+      +-----------------+                         ^
+      |  Arc<T> Clone   | ------------------------+
+      +-----------------+
+```
+
+#### 1. Internal Heap Layout
+
+When you allocate `Arc::new(value)`, Rust generates an internal struct on the heap roughly equivalent to:
+
+```rust
+// Conceptual layout inside std::sync::Arc
+struct ArcInner<T> {
+    strong: std::sync::atomic::AtomicUsize,
+    weak:   std::sync::atomic::AtomicUsize,
+    data:   T,
+}
+```
+
+- **`strong` counter:**  
+  Tracks the number of active `Arc<T>` pointers.  
+  Once this hits `0`, the inner `T` is immediately dropped (`drop_in_place`).
+- **`weak` counter:**  
+  Tracks `Weak<T>` non-owning pointers (used to prevent circular memory leaks).  
+  The heap memory allocation (`ArcInner<T>`) remains allocated until `strong == 0` **and** `weak == 0`.
+
+#### 2. Performance Implications
+
+Calling `Arc::clone(&ptr)` does not duplicate the underlying payload `T`; it only performs an atomic fetch-and-add on the `strong` counter:
+
+```rust
+self.inner().strong.fetch_add(1, Ordering::Relaxed);
+```
+
+While much cheaper than a deep copy, atomic instructions still invalidate hardware cache lines across CPU cores.  
+**Rule of thumb:** Do not wrap tiny values in an `Arc` per-thread if a single reference via `std::thread::scope` can do the job without heap allocations or atomic overhead.
+
+### Module 4.2: Mutual Exclusion (`Mutex<T>`) & RAII Guards
+
+In languages like C++, Java, or Go, a mutex is an independent synchronization object sitting beside the data:
+
+```cpp
+// Traditional approach (error-prone)
+std::mutex mtx;
+std::vector<int> shared_data;
+
+mtx.lock();
+shared_data.push_back(1); // Nothing stops someone from accessing shared_data without locking!
+mtx.unlock();
+```
+
+In Rust, **the data lives inside the mutex**. The `Mutex<T>` is a container that provides *interior mutability* across thread boundaries.
+
+```rust
+pub struct Mutex<T: ?Sized> {
+    inner: sys::Mutex,
+    data:  UnsafeCell<T>, // Data accessible ONLY when the lock is held
+}
+```
+
+#### 1. The `MutexGuard<'a, T>` Lifetime Protocol
+
+To read or write the inner data, you must call `.lock()`. This call blocks the thread until the OS mutex is acquired, returning a `MutexGuard<T>`.
+
+```rust
+use std::sync::Mutex;
+
+let counter = Mutex::new(0);
+
+{
+    // 1. Blocks until the lock is acquired
+    let mut guard = counter.lock().unwrap(); 
+
+    // 2. DerefMut allows mutating the inner data directly
+    *guard += 1; 
+
+    // 3. RAII Drop: `guard` goes out of scope here!
+    // The lock is automatically and deterministically released.
+}
+```
+
+The guard implements two critical traits:
+
+- `Deref` / `DerefMut`: Transparently forwards reads and writes to the inner `T`.
+- `Drop`: Intercepts the end of the guard's lexical scope and invokes the platform-specific OS unlock primitive (`pthread_mutex_unlock` or `ReleaseSRWLockExclusive`).
+
+#### 2. Lock Contention & Guard Scope Leaks
+
+Because releasing the lock is tied to the lifetime of the `MutexGuard`, keeping a guard in scope longer than necessary creates unnecessary lock contention:
+
+```rust
+// ANTI-PATTERN: Guard held across a blocking operation
+let mut guard = shared_state.lock().unwrap();
+guard.update_local_state();
+expensive_network_call(); // CRITICAL BUG: Other threads are blocked waiting for this lock!
+```
+
+**Correction:** Explicitly limit scope using localized blocks or `drop(guard)`:
+
+```rust
+// PATTERN: Minimize critical sections
+{
+    let mut guard = shared_state.lock().unwrap();
+    guard.update_local_state();
+} // Guard dropped immediately here
+
+expensive_network_call(); // Free to execute without starving other threads
+```
+
+### Module 4.3: Lock Poisoning
+
+What happens if a thread panics while holding a `MutexGuard`?
+
+In C or Go, a thread panicking or crashing while holding a lock either causes a permanent **deadlock** (the lock is never released) or leaves shared memory in an inconsistent, partially updated state.
+
+Rust handles this via **Lock Poisoning**:
+
+1. When a thread panics, the unwinding runtime runs the `Drop` implementation on active stack frames.
+2. The `MutexGuard` drop logic marks an internal flag in the mutex: `poisoned = true`.
+3. The lock is then released so other threads don't deadlock.
+4. Any future call to `.lock()` by surviving threads returns `Err(PoisonError<MutexGuard<T>>)` instead of `Ok(guard)`.
+
+```rust
+use std::sync::{Arc, Mutex};
+use std::thread;
+
+let shared_data = Arc::new(Mutex::new(vec![1, 2, 3]));
+let data_clone = Arc::clone(&shared_data);
+
+// Thread 1: Panics mid-write
+let _ = thread::spawn(move || {
+    let mut guard = data_clone.lock().unwrap();
+    guard.push(4);
+    panic!("Fatal worker crash while holding the lock!");
+}).join();
+
+// Thread 2: Surviving thread inspects the poisoned lock
+match shared_data.lock() {
+    Ok(guard) => {
+        println!("Lock acquired normally: {:?}", *guard);
+    }
+    Err(poisoned) => {
+        eprintln!("WARNING: Mutex was poisoned by a previous panic!");
+        
+        // You can choose to recover the data anyway:
+        let guard = poisoned.into_inner();
+        println!("Recovered contaminated data: {:?}", *guard);
+    }
+}
+```
+
+Calling `.unwrap()` on `.lock()` is an intentional assertion: *"If another thread panicked while mutating this state, the invariants are broken, so crash this thread too."*
+
+### Module 4.4: Reader-Writer Locks (`RwLock<T>`)
+
+A `Mutex<T>` is pessimistic: it allows only one thread inside the critical section, even if 100 threads just want to read the data concurrently.  
+
+`std::sync::RwLock<T>` maps directly to the borrow checker's aliasing rules at runtime:
+
+- **Shared Access (`.read()`):** Arbitrary number of concurrent readers permitted simultaneously.
+- **Exclusive Access (`.write()`):** Exactly one writer permitted; all readers and other writers are locked out.
+
+```text
+       Readers (Thread A, B, C)                 Writer (Thread D)
+     +--------------------------+          +-------------------------+
+     |   rwlock.read().unwrap() |          | rwlock.write().unwrap() |
+     +--------------------------+          +-------------------------+
+                  |                                     |
+                  v                                     v
+     [ Concurrent Shared Access ]          [ Exclusive Mutex Lock ]
+```
+
+```rust
+use std::sync::RwLock;
+
+let config = RwLock::new(String::from("v1.0.0"));
+
+// Multiple readers can hold read guards at the exact same moment
+{
+    let r1 = config.read().unwrap();
+    let r2 = config.read().unwrap();
+    println!("Reader 1: {r1}, Reader 2: {r2}");
+} // Both read guards dropped here
+
+// A single writer has exclusive access
+{
+    let mut w = config.write().unwrap();
+    w.push_str("-patch1");
+}
+```
+
+#### The `RwLock` Tradeoff: Reader vs. Writer Starvation
+
+An `RwLock` is not a free upgrade over a `Mutex`:
+
+- **Reader Starvation / Writer Starvation:**  
+  Depending on the OS-level implementation, a continuous stream of incoming read locks can prevent writers from ever acquiring the lock (or vice versa).
+- **Instruction Overhead:**  
+  Acquiring a read lock requires atomic increment, checking writer status flags, and branch logic.  
+  If your critical section is tiny (e.g., updating a single integer), **a standard `Mutex` or an `Atomic` is significantly faster than an `RwLock**` due to lower lock acquisition overhead.
+
+### Phase 4 Milestone: Thread-Safe In-Memory Cache with TTL Expiration
+
+To unify `Arc`, `RwLock`, and fine-grained scoping, we will implement a high-concurrency key-value store where reads are concurrent, writes are serialized, and stale items expire gracefully.
+
+```rust
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
+use std::thread;
+use std::time::{Duration, Instant};
+
+struct CacheEntry<V> {
+    value: V,
+    expires_at: Instant,
+}
+
+pub struct ConcurrentTtlCache<K, V> {
+    // Sharded storage protected by a Reader-Writer lock
+    store: Arc<RwLock<HashMap<K, CacheEntry<V>>>>,
+}
+
+impl<K: std::hash::Hash + Eq + Clone + Send + Sync + 'static, V: Clone + Send + Sync + 'static> ConcurrentTtlCache<K, V> {
+    pub fn new() -> Self {
+        Self {
+            store: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Insert or update a key with a Time-To-Live (TTL)
+    pub fn set(&self, key: K, value: V, ttl: Duration) {
+        let entry = CacheEntry {
+            value,
+            expires_at: Instant::now() + ttl,
+        };
+
+        // Acquire exclusive write access
+        let mut write_guard = self.store.write().unwrap();
+        write_guard.insert(key, entry);
+    }
+
+    /// Retrieve a value if it exists and has not expired
+    pub fn get(&self, key: &K) -> Option<V> {
+        // Step 1: Fast path - acquire read access
+        let read_guard = self.store.read().unwrap();
+        
+        if let Some(entry) = read_guard.get(key) {
+            if Instant::now() < entry.expires_at {
+                return Some(entry.value.clone());
+            }
+        }
+        None
+    }
+
+    /// Purge expired entries in a single pass
+    pub fn cleanup_stale_entries(&self) -> usize {
+        let mut write_guard = self.store.write().unwrap();
+        let initial_len = write_guard.len();
+        let now = Instant::now();
+
+        write_guard.retain(|_, entry| entry.expires_at > now);
+        initial_len - write_guard.len()
+    }
+}
+
+// Clone creates a shallow pointer to the same shared inner cache
+impl<K, V> Clone for ConcurrentTtlCache<K, V> {
+    fn clone(&self) -> Self {
+        Self {
+            store: Arc::clone(&self.store),
+        }
+    }
+}
+
+fn main() {
+    let cache = ConcurrentTtlCache::new();
+    let mut workers = vec![];
+
+    // Seed data
+    cache.set("session_user_1", "authenticated", Duration::from_millis(300));
+    cache.set("system_metric", "99.8%", Duration::from_secs(5));
+
+    // Spawn 4 reader threads
+    for id in 0..4 {
+        let cache_ref = cache.clone();
+        workers.push(thread::spawn(move || {
+            for _ in 0..3 {
+                if let Some(val) = cache_ref.get(&"session_user_1") {
+                    println!("[Reader {id}] Cache hit: {val}");
+                } else {
+                    println!("[Reader {id}] Cache MISS (expired or non-existent)");
+                }
+                thread::sleep(Duration::from_millis(150));
+            }
+        }));
+    }
+
+    // Spawn 1 background sweeper thread
+    let sweeper_cache = cache.clone();
+    let sweeper = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(400));
+        let purged = sweeper_cache.cleanup_stale_entries();
+        println!("\n>>> [Janitor] Sweep completed: {purged} stale keys evicted <<<\n");
+    });
+
+    for worker in workers {
+        worker.join().unwrap();
+    }
+    sweeper.join().unwrap();
+}
+```
+
+### Architectural Review: Choosing the Right Primitive
+
+```text
+Do multiple threads need to own the handle?
+  ├─ No  ──> Stack reference with std::thread::scope
+  └─ Yes ──> Arc<T>
+              │
+              Can T be modified?
+                ├─ No  ──> Arc<T> (Immutable shared state)
+                └─ Yes ──> What is the read/write distribution?
+                            ├─ Many readers, few writers ──> Arc<RwLock<T>>
+                            ├─ High contention writes    ──> Arc<Mutex<T>>
+                            └─ Primitive numeric counter ──> Arc<AtomicUsize> (Phase 6)
+```
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Phase 5: Advanced Coordination Primitives
+
+In Phase 4, we used `Mutex` and `RwLock` to serialize access to memory.  
+However, locks only answer the question: *"Can I safely touch this data right now?"*  
+
+They do **not** solve the signaling problem: *"How do I wait until the data enters a specific state without burning 100% CPU in a spin loop?"*  
+
+Phase 5 addresses explicit thread orchestration: parking threads until states change, synchronizing groups at a rendezvous point, and managing one-time lazy global initialization safely.
+
+### Module 5.1: Condition Variables (`std::sync::Condvar`)
+
+A naive approach to waiting for a state transition is busy-waiting:
+
+```rust
+// ANTI-PATTERN: Burns CPU cycles, starves other threads
+loop {
+    let guard = lock.lock().unwrap();
+    if *guard == true { break; }
+    // Drop lock and loop immediately
+}
+```
+
+A **Condition Variable** (`Condvar`) solves this by allowing an idle thread to sleep while atomically releasing its associated mutex.
+
+```text
+Producer Thread                                     Consumer Thread
+      │                                                   │
+      │                                             1. lock.lock()
+      │                                             2. while !ready {
+      │                                                   condvar.wait(guard)
+      │                                                }  └── Atomically releases lock
+      │                                                       & parks thread in OS
+      │
+3. lock.lock()
+4. *data = ready
+5. condvar.notify_one()
+   └── Wakes Consumer
+6. drop(lock)
+                                                    3. Unparks, re-acquires lock
+                                                    4. Verifies state and proceeds
+```
+
+#### 1. The Anatomy of `Condvar::wait`
+
+The signature of `wait` requires a mutable reference to a `MutexGuard`:
+
+```rust
+pub fn wait<'a, T>(&self, guard: MutexGuard<'a, T>) -> LockResult<MutexGuard<'a, T>>
+```
+
+This API models the underlying OS invariant (`pthread_cond_wait` / `SleepConditionVariableSRW`):
+
+1. It **releases the lock** held by `guard`.
+2. It **blocks the calling thread** in the OS kernel.
+3. Both actions occur **atomically**. If they weren't atomic, a producer could signal between the unlock and the sleep, causing the consumer to sleep forever (a lost wakeup bug).
+4. When awakened, `wait` **re-acquires the lock** before returning, handing you back a valid `MutexGuard`.
+
+#### 2. The Spurious Wakeup Invariant
+
+A thread can wake up from `wait` even if nobody called `notify`!  
+This can happen due to OS kernel interrupts or multi-core scheduling artifacts (**spurious wakeups**).  
+
+> **Rule:** Never use an `if` condition when calling `Condvar::wait`. **Always use a `while` loop** (or the standard library helper `wait_while`).
+
+```rust
+use std::sync::{Arc, Condvar, Mutex};
+use std::thread;
+
+let pair = Arc::new((Mutex::new(false), Condvar::new()));
+let pair_clone = Arc::clone(&pair);
+
+thread::spawn(move || {
+    let (lock, cvar) = &*pair_clone;
+    let mut started = lock.lock().unwrap();
+    *started = true;
+    // Notify one sleeping thread
+    cvar.notify_one(); 
+});
+
+let (lock, cvar) = &*pair;
+let mut started = lock.lock().unwrap();
+
+// Idiomatic: Loop re-checks condition upon waking up
+while !*started {
+    started = cvar.wait(started).unwrap();
+}
+
+// Or using the standard library helper:
+// cvar.wait_while(started, |started| !*started).unwrap();
+
+println!("Worker signaled readiness!");
+```
+
+#### 3. `notify_one` vs. `notify_all`
+
+- **`notify_one()`**: Unparks a single waiting thread. Use this when only one worker can process the state change (e.g., one item added to a queue).
+- **`notify_all()`**: Unparks every thread currently blocked on the `Condvar`. Use this for broadcasting events (e.g., shutdown signals, milestone reached).
+
+### Module 5.2: Barriers (`std::sync::Barrier`)
+
+A `Condvar` coordinates based on arbitrary state. A `Barrier` coordinates threads based strictly on **count**.
+
+A barrier enables multiple threads to synchronize the beginning of some computation.  
+When initialized with a count $N$, calling `barrier.wait()` blocks each thread until exactly $N$ threads have called `barrier.wait()`.  
+At that moment, the barrier opens, and all $N$ threads are released simultaneously.  
+
+```text
+Thread 1:  ─── Compute Phase 1 ───> barrier.wait() ──┐
+Thread 2:  ─── Compute Phase 1 ─────────> barrier.wait() ──┼─> [ Barrier Releases ] ──> Next Phase
+Thread 3:  ─── Compute Phase 1 ──> barrier.wait() ─────────┘
+```
+
+#### Cyclic Reusability and the Leader Thread
+
+- **Cyclic:** A barrier automatically resets its counter to $0$ after releasing, allowing it to be used across repeated simulation steps (e.g., multi-step scientific calculations).
+- **Leader Election:** `barrier.wait()` returns a `BarrierWaitResult`. Exactly one thread receives `is_leader() == true`, designating it to perform single-threaded housekeeping between steps (such as logging or saving checkpoints).
+
+```rust
+use std::sync::{Arc, Barrier};
+use std::thread;
+
+let num_threads = 3;
+let barrier = Arc::new(Barrier::new(num_threads));
+let mut handles = vec![];
+
+for id in 0..num_threads {
+    let b = Arc::clone(&barrier);
+    handles.push(thread::spawn(move || {
+        println!("Worker {id}: Running Stage 1...");
+        
+        // Wait for all 3 threads to reach this point
+        let wait_result = b.wait();
+        
+        if wait_result.is_leader() {
+            println!(">>> Leader thread {id}: All workers finished Stage 1! Resetting. <<<");
+        }
+
+        println!("Worker {id}: Running Stage 2...");
+    }));
+}
+
+for h in handles {
+    h.join().unwrap();
+}
+```
+
+### Module 5.3: Global One-Time Initialization (`Once` & `OnceLock`)
+
+Global mutable state is notoriously unsafe in concurrent programming.  
+In older Rust codebases, developers relied on crates like `lazy_static` or `once_cell`.  
+Today, Rust's standard library provides native, thread-safe, one-time initialization primitives in `std::sync`.
+
+#### 1. `std::sync::Once` (Execution Initialization)
+
+Ensures a closure is executed **exactly once**, regardless of how many threads invoke it concurrently:
+
+```rust
+use std::sync::Once;
+
+static INIT: Once = Once::new();
+
+fn initialize_subsystem() {
+    INIT.call_once(|| {
+        // Run hardware checks or legacy C-library bindings here.
+        // Guaranteed to run once, and only once.
+        println!("System initialized exactly once.");
+    });
+}
+```
+
+If multiple threads call `initialize_subsystem()` at the same time:
+
+1. The first thread runs the closure.
+2. The other threads block until the first thread completes the closure successfully.
+3. Subsequent calls return immediately without executing the closure.
+
+#### 2. `std::sync::OnceLock<T>` (Value Initialization)
+
+Stabilized in Rust 1.70, `OnceLock<T>` is the modern standard replacement for `lazy_static`.  
+It is a thread-safe cell that can be written to exactly once and read from concurrently without locks:
+
+```rust
+use std::sync::OnceLock;
+use std::collections::HashMap;
+
+// Safe global static without unsafe blocks or third-party crates
+static GLOBAL_CONFIG: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
+
+fn get_config(key: &str) -> Option<&'static str> {
+    let map = GLOBAL_CONFIG.get_or_init(|| {
+        println!("--> Initializing global configuration map...");
+        let mut m = HashMap::new();
+        m.insert("host", "127.0.0.1");
+        m.insert("port", "8080");
+        m
+    });
+
+    map.get(key).copied()
+}
+
+fn main() {
+    let h1 = std::thread::spawn(|| println!("Port: {:?}", get_config("port")));
+    let h2 = std::thread::spawn(|| println!("Host: {:?}", get_config("host")));
+
+    h1.join().unwrap();
+    h2.join().unwrap();
+}
+```
+
+- **No Overhead on Reads:** Once initialized, `get()` performs an atomic pointer load without acquiring OS locks.
+- **Race Resolution:** If two threads call `get_or_init` simultaneously, only one initialization closure executes; the losing thread discards its result and adopts the winner's value.
+
+### Phase 5 Milestone: Custom Bounded MPMC Queue
+
+To synthesize these synchronization patterns, we will build a custom **Bounded Multi-Producer, Multi-Consumer (MPMC) Queue** from scratch using only a standard `VecDeque`, a `Mutex`, and two `Condvar`s:
+
+- **`not_full` Condvar**: Producers sleep here when the buffer hits capacity.
+- **`not_empty` Condvar**: Consumers sleep here when the buffer is dry.
+
+```text
+Producers (tx) ──> lock ──> [ Full? ] ──Yes──> not_full.wait()
+                              │ No
+                              └── Enqueue ──> not_empty.notify_one()
+
+Consumers (rx) ──> lock ──> [ Empty? ] ──Yes──> not_empty.wait()
+                              │ No
+                              └── Dequeue ──> not_full.notify_one()
+```
+
+```rust
+use std::collections::VecDeque;
+use std::sync::{Arc, Condvar, Mutex};
+use std::thread;
+use std::time::Duration;
+
+pub struct BoundedQueue<T> {
+    capacity: usize,
+    inner: Mutex<VecDeque<T>>,
+    not_empty: Condvar,
+    not_full: Condvar,
+}
+
+impl<T> BoundedQueue<T> {
+    pub fn new(capacity: usize) -> Self {
+        assert!(capacity > 0, "Capacity must be greater than 0");
+        Self {
+            capacity,
+            inner: Mutex::new(VecDeque::with_capacity(capacity)),
+            not_empty: Condvar::new(),
+            not_full: Condvar::new(),
+        }
+    }
+
+    /// Push an item onto the queue, blocking if capacity is reached
+    pub fn push(&self, item: T) {
+        let mut queue = self.inner.lock().unwrap();
+
+        // While queue is full, release lock and sleep on `not_full`
+        while queue.len() >= self.capacity {
+            queue = self.not_full.wait(queue).unwrap();
+        }
+
+        queue.push_back(item);
+
+        // Notify one sleeping consumer that an item is available
+        self.not_empty.notify_one();
+    }
+
+    /// Pop an item off the queue, blocking if the queue is empty
+    pub fn pop(&self) -> T {
+        let mut queue = self.inner.lock().unwrap();
+
+        // While queue is empty, release lock and sleep on `not_empty`
+        while queue.is_empty() {
+            queue = self.not_empty.wait(queue).unwrap();
+        }
+
+        let item = queue.pop_front().unwrap();
+
+        // Notify one sleeping producer that space has opened up
+        self.not_full.notify_one();
+
+        item
+    }
+}
+
+fn main() {
+    // Capacity of 2 elements creates immediate contention/coordination
+    let queue = Arc::new(BoundedQueue::new(2));
+    let mut handles = vec![];
+
+    // Spawn 2 Consumer Threads
+    for id in 0..2 {
+        let q = Arc::clone(&queue);
+        handles.push(thread::spawn(move || {
+            for _ in 0..5 {
+                let val = q.pop();
+                println!("  [Consumer {id}] <<< Popped: {val}");
+                thread::sleep(Duration::from_millis(150));
+            }
+        }));
+    }
+
+    // Spawn 2 Producer Threads
+    for id in 0..2 {
+        let q = Arc::clone(&queue);
+        handles.push(thread::spawn(move || {
+            for i in 0..5 {
+                let val = format!("msg-{id}-{i}");
+                q.push(val.clone());
+                println!("[Producer {id}] >>> Pushed: {val}");
+                thread::sleep(Duration::from_millis(50));
+            }
+        }));
+    }
+
+    for h in handles {
+        h.join().unwrap();
+    }
+
+    println!("\nMPMC Pipeline drained successfully without busy loops or deadlocks!");
+}
+```
+
+### Architectural Review: Phase 5 Primitives
+
+| Primitive          | Use Case                                                            | Sleep/Wake Mechanism                                                      |
+| ------------------ | ------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| **`Condvar`**      | Coordinate threads based on dynamic conditions or state transitions | Releases associated `Mutex` and parks via OS futex; awakened via `notify` |
+| **`Barrier`**      | Hold groups of threads until all $N$ participants reach a stage     | Tracks atomic arrival counter; unparks all callers simultaneously         |
+| **`Once`**         | Execute side-effecting initialization code exactly once             | Blocks concurrent callers; subsequent callers skip immediately            |
+| **`OnceLock<T>`**  | Safely compute and share a static global value lazily               | Lock-free reading once populated; safe concurrent init race resolution    |
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Phase 6: Low-Level Atomics & Memory Ordering
+
+In Phase 4 and Phase 5, we relied on OS-assisted synchronization primitives (`Mutex`, `RwLock`, `Condvar`).  
+Under the hood, those locks avoid burning CPU by putting threads to sleep via OS syscalls (like `futex` on Linux).
+
+Atomics eliminate OS syscalls entirely.  
+They map directly to **single machine-code instructions** supported natively by the CPU memory bus, enabling lock-free concurrency.  
+
+### Module 6.1: Atomic Primitives (`std::sync::atomic`)
+
+Standard integer types (`u32`, `usize`, `bool`) cannot be safely mutated concurrently because operations like `x += 1` are not atomic; they expand into three separate CPU instructions:
+
+1. `MOV`: Load value from RAM/cache into a register.
+2. `ADD`: Increment the register.
+3. `MOV`: Store the register value back to cache.
+
+If two threads execute this sequence simultaneously, their reads and writes interleave, leading to lost updates.
+
+Rust provides atomic counterparts in `std::sync::atomic`: `AtomicBool`, `AtomicUsize`, `AtomicI32`, `AtomicPtr<T>`, etc.
+
+#### Core Atomic Operations
+
+- **`load(&self, order)`**: Reads the current value atomically.
+- **`store(&self, val, order)`**: Overwrites the value atomically.
+- **`swap(&self, val, order)`**: Replaces the value and returns the old value in one indivisible operation.
+- **`fetch_add(&self, val, order)` / `fetch_sub**`: Atomically adds/subtracts and returns the *previous* value (wrapping on overflow).
+- **Compare-And-Swap (`compare_exchange` vs `compare_exchange_weak`)**: The cornerstone of lock-free data structures.
+
+#### `compare_exchange` vs. `compare_exchange_weak`
+
+Compare-and-swap checks if the current value matches an expected value; if true, it writes a new value.
+
+```rust
+pub fn compare_exchange(
+    &self,
+    current: T,
+    new: T,
+    success: Ordering,
+    failure: Ordering
+) -> Result<T, T>
+```
+
+| Method                       | Behavior on Mismatch                 | Spurious Failures?                                 | Best Use Case                                                                                                                                                                             |
+| ---------------------------- | ------------------------------------ | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`compare_exchange`**       | Fails only if value $\neq$ expected  | **No.** Guaranteed deterministic check.            | When a failure branch is expensive or cannot be retried easily.                                                                                                                           |
+| **`compare_exchange_weak`**  | Can fail even if value $==$ expected | **Yes** (on LL/SC architectures like ARM, RISC-V). | **Inside loops.** On ARM/RISC-V, `weak` compiles to a single load-linked/store-conditional pair, making the retry loop significantly faster than forcing strong CAS emulation.            |
+
+```rust
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+let counter = AtomicUsize::new(10);
+
+// CAS Loop Pattern using compare_exchange_weak
+let mut current = counter.load(Ordering::Relaxed);
+loop {
+    let new_val = current * 2;
+    match counter.compare_exchange_weak(
+        current,
+        new_val,
+        Ordering::AcqRel,
+        Ordering::Relaxed
+    ) {
+        Ok(_) => break,
+        Err(actual) => current = actual, // Update expected value and retry
+    }
+}
+```
+
+### Module 6.2: The Hardware Memory Model & `Ordering`
+
+Atomics do more than prevent torn reads/writes; their primary job is establishing **memory visibility and ordering guarantees** across threads and CPU cores.
+
+The Rust memory model is inherited directly from **C++11**. It defines how operations synchronize and restricts both the compiler and CPU from reordering memory accesses.
+
+```text
+Weakest (Fastest)  <─────────────────────────────────────────> Strongest (Slowest)
+   Relaxed           Acquire / Release / AcqRel              SeqCst
+```
+
+#### 1. `Ordering::Relaxed` (No Ordering Constraints)
+
+- **Guarantee:** Atomicity only. Guarantees that loads and stores are indivisible (no torn reads/writes), and all modifications to that specific single atomic variable occur in a single, consistent modification order.
+- **Non-Guarantee:** Provides **zero synchronization** with other memory locations. Instructions before or after the atomic operation can be freely reordered by the compiler or CPU.
+- **Use Case:** Standalone counters, metrics, or flags where other memory does not depend on the sequence (e.g., counting total requests served by an HTTP server).
+
+```rust
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static HIT_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+fn record_hit() {
+    // Relaxed is sufficient: we don't care who sees which hit in what order,
+    // only that no increments are dropped.
+    HIT_COUNTER.fetch_add(1, Ordering::Relaxed);
+}
+```
+
+#### 2. Acquire-Release Semantics (`Acquire`, `Release`, `AcqRel`)
+
+This is the standard model for synchronizing user data across threads. Acquire and Release operate as a paired handoff:
+
+- **`Release` (used on stores):**  
+  No memory access (load or store) preceding this operation in the source code can be reordered **after** this store.  
+  All previous writes (atomic and non-atomic!) are committed and made visible to any thread that performs an `Acquire` load on this same atomic variable.
+- **`Acquire` (used on loads):**  
+  No memory access following this operation in the source code can be reordered **before** this load.  
+  It ensures the reading thread sees everything that happened before the corresponding `Release` store.
+- **`AcqRel` (used on Read-Modify-Write):**  
+  Combines both.  
+  It acts as `Acquire` for the read part and `Release` for the write part (standard for CAS loops and mutex acquisition).
+
+```text
+Producer Core                               Consumer Core
+[ Non-atomic Data Write: data = 42 ]        
+[ Release Store: ready.store(true) ] ───┐   
+                                        │ (Synchronization Edge)
+                                        └──> [ Acquire Load: while !ready.load() ]
+                                             [ Safe Read: assert_eq!(data, 42) ]
+```
+
+```rust
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
+
+static mut SHARED_DATA: u64 = 0;
+static READY: AtomicBool = AtomicBool::new(false);
+
+fn main() {
+    thread::spawn(|| {
+        // Safe only because of the Acquire-Release synchronization edge below!
+        unsafe { SHARED_DATA = 42; }
+
+        // RELEASE: Flushes previous writes; cannot be reordered before SHARED_DATA write
+        READY.store(true, Ordering::Release);
+    });
+
+    thread::spawn(|| {
+        // ACQUIRE: Guarantees everything after this sees what happened before the RELEASE
+        while !READY.load(Ordering::Acquire) {
+            std::hint::spin_loop();
+        }
+
+        // Guarantees no data race: SHARED_DATA is guaranteed to be 42
+        unsafe {
+            println!("Data: {}", SHARED_DATA);
+        }
+    }).join().unwrap();
+}
+```
+
+#### 3. `Ordering::SeqCst` (Sequential Consistency)
+
+- **Guarantee:**  
+  Imposes all the guarantees of `Acquire` (on loads) and `Release` (on stores), **plus** enforces a globally consistent total order across all threads.
+- Every single thread in the system observes all `SeqCst` operations occurring in the exact same sequential order.
+- **The Cost:**  
+  On x86, `SeqCst` stores emit expensive `MFENCE` or locked instructions (`LOCK CMPXCHG`, `LOCK XADD`).  
+  On ARM, it requires full memory barriers (`dmb ish`), which can stall the CPU pipeline while memory buses synchronize.
+- **When to use:**  
+  It is the default choice when you are unsure of the memory model implications, or for complex algorithms where multiple atomic variables interact and all threads must observe their transitions in identical order.
+
+### Module 6.3: Hardware Memory Fences (`std::sync::atomic::fence`)
+
+Sometimes you want to synchronize memory without coupling the barrier directly to an atomic load or store.  
+A **fence** separates memory operations without needing an atomic operation on every variable:
+
+```rust
+use std::sync::atomic::{fence, Ordering};
+
+// Establishes release semantics for preceding writes
+fence(Ordering::Release);
+
+// Establishes acquire semantics for subsequent reads
+fence(Ordering::Acquire);
+```
+
+Fences emit hardware-level synchronization instructions (e.g., `dmb` on ARM, or acting as compiler barriers on x86, which is already strongly ordered for most reads/writes).
+
+### Phase 6 Milestone: Custom Lock-Free Spinlock
+
+To see how `Acquire` and `Release` work together in hardware, we will build a working, starvation-resistant **Spinlock**.
+
+Instead of putting threads to sleep via the OS kernel, a spinlock busy-loops using atomic instructions.  
+It is designed for low-contention scenarios where critical sections execute in nanoseconds.
+
+```rust
+use std::cell::UnsafeCell;
+use std::ops::{Deref, DerefMut};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::hint;
+
+pub struct SpinLock<T> {
+    locked: AtomicBool,
+    data: UnsafeCell<T>,
+}
+
+// Safety: As long as T can be sent across threads, SpinLock can be shared (&SpinLock: Sync)
+unsafe impl<T: Send> Sync for SpinLock<T> {}
+unsafe impl<T: Send> Send for SpinLock<T> {}
+
+pub struct SpinLockGuard<'a, T> {
+    lock: &'a SpinLock<T>,
+}
+
+impl<T> SpinLock<T> {
+    pub const fn new(data: T) -> Self {
+        Self {
+            locked: AtomicBool::new(false),
+            data: UnsafeCell::new(data),
+        }
+    }
+
+    pub fn lock(&self) -> SpinLockGuard<'_, T> {
+        // TTAS (Test and Test-And-Set) optimization:
+        // First check with a relaxed load to avoid invalidating CPU cache lines in a loop.
+        while self.locked.load(Ordering::Relaxed)
+            || self.locked.swap(true, Ordering::Acquire)
+        {
+            // Emits a CPU-level pause instruction (PAUSE on x86, YIELD on ARM).
+            // Prevents pipeline stalls and saves power during busy-waiting.
+            hint::spin_loop();
+        }
+
+        SpinLockGuard { lock: self }
+    }
+}
+
+// RAII Guard: Releases the lock on drop using Release ordering
+impl<'a, T> Drop for SpinLockGuard<'a, T> {
+    fn drop(&mut self) {
+        // RELEASE: Ensures all mutations through DerefMut are flushed 
+        // before the lock flag flips back to false!
+        self.lock.locked.store(false, Ordering::Release);
+    }
+}
+
+impl<'a, T> Deref for SpinLockGuard<'a, T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        // Safety: We hold the spinlock exclusively
+        unsafe { &*self.lock.data.get() }
+    }
+}
+
+impl<'a, T> DerefMut for SpinLockGuard<'a, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        // Safety: We hold exclusive write access
+        unsafe { &mut *self.lock.data.get() }
+    }
+}
+
+fn main() {
+    use std::sync::Arc;
+    use std::thread;
+
+    let shared_counter = Arc::new(SpinLock::new(0));
+    let mut handles = vec![];
+
+    for _ in 0..4 {
+        let counter = Arc::clone(&shared_counter);
+        handles.push(thread::spawn(move || {
+            for _ in 0..10_000 {
+                let mut guard = counter.lock();
+                *guard += 1; // Mutating inner data through lock
+            }
+        }));
+    }
+
+    for h in handles {
+        h.join().unwrap();
+    }
+
+    let final_val = *shared_counter.lock();
+    println!("Final Counter Value: {final_val}");
+    assert_eq!(final_val, 40_000);
+}
+```
+
+### Architectural Review: Memory Ordering Selection Matrix
+
+| Ordering        | Cost (x86)                                   | Cost (ARM/RISC-V)                        | Use Case                                                 |
+| --------------- | -------------------------------------------- | ---------------------------------------- | -------------------------------------------------------- |
+| **`Relaxed`**   | Zero overhead (identical to plain MOV)       | Zero overhead                            | Counters, statistics, flags that do not guard data       |
+| **`Release`**   | Free (x86 hardware does not reorder stores)  | Memory barrier instruction (`dmb.ish`)   | Publishing shared data, releasing locks                  |
+| **`Acquire`**   | Free (x86 hardware does not reorder loads)   | Memory barrier instruction (`dmb.ishld`) | Consuming published data, acquiring locks                |
+| **`AcqRel`**    | Free (for Read-Modify-Write)                 | Full barrier                             | Read-Modify-Write operations, swap, CAS                  |
+| **`SeqCst`**    | Emits `LOCK` prefix / `MFENCE`               | Full memory barrier                      | Complex multi-variable invariants across multiple cores  |
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Phase 7: The Bridge: OS Threads vs. Asynchronous Concurrency
+
+We have covered low-level concurrency down to CPU instruction caches and memory ordering fences.  
+At the application layer, however, another architectural dividing line emerges: **Preemptive OS Threads** vs. **Cooperative Asynchronous Tasks**.
+
+### Module 7.1: Preemptive vs. Cooperative Multitasking
+
+The distinction between OS multi-threading and async programming is not stylistic;  
+It is an engineering tradeoff between **memory density**, **context-switch latency**, and **workload characteristics**.
+
+```text
+Preemptive OS Threads (1:1 Model):
+  Thread 1 ────[ Slice A ]──────(OS Timer Interrupt)───> [ Wait in Runqueue ]
+  Thread 2 ────────────────────[ Interleaved Exec ]─────> [ Kernel Context Switch ]
+
+Cooperative Async Tasks (M:N Task-on-Thread Model):
+  Worker Thread (OS) ─────────────────────────────────────────────────────────>
+     Task A  ──[ Runs to .await ]──> (Yields back to Runtime)
+     Task B                         └──[ Picks up & Runs to .await ]──> (Yields)
+```
+
+| Dimension            | Native OS Threads (`std::thread`)                                                                               | Async Tasks (`tokio::task`)                                                                   |
+| -------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| **Scheduling**       | **Preemptive:** The OS kernel interrupts execution at arbitrary points via timer interrupts.                    | **Cooperative:** Tasks yield execution voluntarily at explicit `.await` points.               |
+| **Stack Allocation** | Fixed stack (typically 2MB virtual, allocated upfront per thread).                                              | Zero dedicated stack. Tasks are compile-time state machines packed into compact heap structs. |
+| **Memory Footprint** | ~10,000 threads can exhaust GBs of virtual memory and kernel control structures.                                | 100,000+ tasks can comfortably live in several hundred megabytes.                             |
+| **Switch Cost**      | Full kernel context switch: CPU register save, cache pollution, TLB invalidation ($1\text{--}2\,\mu\text{s}$).  | Function call / state-machine jump in user-space ($\approx 10\text{--}50\text{ ns}$).         |
+| **Primary Domain**   | **CPU-bound workloads** (crypto, encoding, scientific matrix transforms).                                       | **I/O-bound workloads** (HTTP servers, WebSocket brokers, network proxies).                   |
+
+### Module 7.2: Tokio Runtime Architecture Under the Hood
+
+The standard library provides the `Future` trait, but **it ships with no async runtime out of the box**.  
+Production systems use `tokio`, which acts as an operating system within user space.
+
+#### 1. The Multi-Thread Work-Stealing Engine
+
+Tokio’s multi-threaded runtime maintains a pool of worker OS threads (typically 1 worker thread per physical CPU core).
+
+```text
+Worker Thread 0                     Worker Thread 1
++---------------------------+       +---------------------------+
+| Local Run Queue (max 256) |       | Local Run Queue (max 256) |
+| [Task 1] [Task 2] [Task 3]|       | [Task 4] (empty...)       |
++---------------------------+       +---------------------------+
+             │                                    │
+             ▼                                    ▼
+       Executes Task 1                 Steals Task 3 from Worker 0!
+             │                                    ▲
+             └──────── Work-Stealing Edge ────────┘
+```
+
+1. **Local Run Queues:**  
+  Each worker thread has a fixed-capacity ring buffer (256 tasks) designed with lock-free atomic operations.  
+  Workers pull from their own queue without taking shared locks.
+2. **Work-Stealing:** If Worker 1's local queue is empty, it attempts to steal half the tasks from Worker 0's local queue via atomic CAS instructions.
+3. **Global Queue:** If all local queues overflow, tasks spill to a shared mutex-protected fallback queue.
+4. **OS Reactor (`mio`):**  
+  While tasks wait on network sockets, Tokio registers their file descriptors with OS event-notification APIs (`epoll` on Linux, `kqueue` on macOS, `IOCP` on Windows).  
+  When the kernel signals socket readiness, the reactor unparks the corresponding task and pushes it back into a worker's run queue.
+
+### Module 7.3: The Bridge: Bridging Sync and Async Safely
+
+The single most common bug in Rust async applications is running blocking, compute-heavy, or non-async I/O code inside an async worker thread.
+
+#### The Golden Rule of Async
+
+> **Never block an async worker thread.**
+
+If a task invokes `std::thread::sleep`, queries a synchronous database driver, or computes a heavy image transform inside a plain async function, **that entire worker thread is frozen**.  
+None of the hundreds or thousands of other tasks assigned to that worker can progress.
+
+```rust
+// CRITICAL BUG: Freezes the entire Tokio worker thread
+async fn bad_handler() {
+    // This blocks the OS thread running the async event loop!
+    std::thread::sleep(std::time::Duration::from_secs(5)); 
+}
+
+//  CORRECT ASYNC SLEEP: Yields control back to the scheduler
+async fn good_handler() {
+    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+}
+```
+
+#### Offloading Heavy Sync Work: `spawn_blocking`
+
+When you must run synchronous or CPU-heavy workloads (e.g., password hashing with Argon2, image decoding, synchronous file access), you must offload them using `tokio::task::spawn_blocking`.
+
+Tokio manages an entirely separate, dynamic pool of dedicated OS threads specifically for blocking work:
+
+```rust
+use tokio::task;
+
+async fn handle_user_login(password: String, hash: String) -> bool {
+    // Moves execution completely off the async worker thread pool 
+    // onto a dedicated blocking thread pool
+    let is_valid = task::spawn_blocking(move || {
+        // CPU-bound password verification (Argon2 / PBKDF2)
+        verify_password_cpu_intensive(&password, &hash)
+    })
+    .await
+    .expect("Blocking task panicked or runtime shut down");
+
+    is_valid
+}
+
+fn verify_password_cpu_intensive(_pass: &str, _hash: &str) -> bool {
+    // Simulated 200ms CPU-heavy computation
+    true
+}
+```
+
+#### `Sync` vs. `Async` Primitives: Choose Wisely
+
+Never use `tokio::sync::Mutex` as a default replacement for `std::sync::Mutex`. They serve distinct purposes:
+
+```text
+Should I hold the lock across an `.await` boundary?
+  ├─ No  ──> Use std::sync::Mutex (faster, zero runtime allocation)
+  └─ Yes ──> Use tokio::sync::Mutex (preserves task-yielding across locks)
+```
+
+```rust
+// Holding an std::sync::Mutex across .await is a compile-time bug or deadlock hazard!
+use std::sync::Arc;
+
+async fn lock_selection_example() {
+    // Standard Mutex is fine if the critical section is brief and does NOT cross .await:
+    let std_locked = Arc::new(std::sync::Mutex::new(0));
+    {
+        let mut guard = std_locked.lock().unwrap();
+        *guard += 1;
+    } // Guard dropped before any .await
+
+    // Tokio Mutex is ONLY required if you MUST yield while holding the lock:
+    let tokio_locked = Arc::new(tokio::sync::Mutex::new(0));
+    {
+        let mut guard = tokio_locked.lock().await;
+        some_async_network_call().await; // Guard remains held across yield!
+        *guard += 1;
+    }
+}
+
+async fn some_async_network_call() {}
+```
+
+### Phase 7 Milestone: Hybrid Sync-Async Parallel Pipeline
+
+To synthesize the bridge between raw OS multi-threading and cooperative async tasks, we will build a production-style **hybrid parallel ingestion engine**:
+
+- An async Tokio network coordinator ingests mock incoming telemetry jobs.
+- Heavy CPU computational work is dynamically offloaded to dedicated OS threads via `spawn_blocking`.
+- Cross-thread communication uses bounded Tokio channels (`tokio::sync::mpsc`) to enforce backpressure.
+
+```rust
+// Cargo.toml dependencies:
+// tokio = { version = "1", features = ["full"] }
+
+use std::time::Instant;
+use tokio::sync::mpsc;
+use tokio::task;
+use tokio::time::{sleep, Duration};
+
+#[derive(Debug)]
+struct TelemetryPacket {
+    sensor_id: u32,
+    raw_payload: Vec<u8>,
+}
+
+#[derive(Debug)]
+struct ProcessedResult {
+    sensor_id: u32,
+    computed_metric: u64,
+    processing_time_ms: u128,
+}
+
+/// Simulated CPU-bound numerical analytics (strictly synchronous)
+fn heavy_cpu_crunch(packet: TelemetryPacket) -> ProcessedResult {
+    let start = Instant::now();
+    
+    // Simulate intensive cryptographic/mathematical processing
+    let mut accumulator: u64 = 0;
+    for (idx, byte) in packet.raw_payload.iter().enumerate() {
+        accumulator = accumulator.wrapping_add((*byte as u64) * (idx as u64 + 1));
+        for _ in 0..10_000 {
+            accumulator = accumulator.rotate_left(1) ^ 0x5555_5555;
+        }
+    }
+
+    ProcessedResult {
+        sensor_id: packet.sensor_id,
+        computed_metric: accumulator,
+        processing_time_ms: start.elapsed().as_millis(),
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    println!("=== Starting Hybrid Sync/Async Processing Pipeline ===\n");
+
+    // Bounded async channel for backpressure (capacity: 4 items)
+    let (tx, mut rx) = mpsc::channel::<TelemetryPacket>(4);
+
+    // 1. Producer Task (Asynchronous I/O simulation)
+    let producer = tokio::spawn(async move {
+        for id in 1..=6 {
+            // Non-blocking async sleep simulating network arrival
+            sleep(Duration::from_millis(100)).await;
+
+            let packet = TelemetryPacket {
+                sensor_id: id,
+                raw_payload: vec![(id as u8) * 7; 1024],
+            };
+
+            println!("[Ingest Worker] Received packet from sensor #{id} over network");
+            
+            // Backpressure: sends wait if the consumer channel is full
+            tx.send(packet).await.unwrap();
+        }
+        println!("[Ingest Worker] Ingestion complete. Disconnecting pipe.");
+    });
+
+    // 2. Consumer Loop: Bridges async reception to sync OS threads
+    let mut processing_handles = vec![];
+
+    while let Some(packet) = rx.recv().await {
+        println!("[Pipeline Dispatcher] Offloading sensor #{} to OS thread pool...", packet.sensor_id);
+
+        // Bridge to OS thread pool: does not block the Tokio reactor!
+        let handle = task::spawn_blocking(move || heavy_cpu_crunch(packet));
+        processing_handles.push(handle);
+    }
+
+    // Await all producers and offloaded compute tasks
+    producer.await.unwrap();
+
+    println!("\n=== Aggregating Results ===");
+    for handle in processing_handles {
+        let result = handle.await.expect("Worker thread panicked!");
+        println!(
+            "-> Sensor #{}: Metric = {:#018x} (Computed in {}ms)",
+            result.sensor_id, result.computed_metric, result.processing_time_ms
+        );
+    }
+
+    println!("\nPipeline cleanly drained with zero blocked event loops.");
+}
+```
+
+### The Complete Concurrency Decision Matrix
+
+With all 7 phases completed, you now have the complete Rust concurrency decision tree:
+
+```text
+What is the core nature of your task?
+│
+├── CPU-Bound (Heavy Math, Compression, Image Processing, Matrix Ops)
+│   ├── Do workloads share disjoint memory in-place?
+│   │   ├── Yes ──> std::thread::scope + split_at_mut (Zero Allocation, Zero Locks)
+│   │   └── No  ──> Rayon parallel iterators / std::thread::spawn
+│   └── Is it triggered from an async application?
+│       └── Yes ──> tokio::task::spawn_blocking
+│
+└── I/O-Bound (Web Servers, Sockets, High-Fanout Microservices)
+    ├── Needs millions of connections with low idle overhead?
+    │   └── Yes ──> Async Rust (Tokio runtime + Futures)
+    └── State Synchronization Needs:
+        ├── Passing discrete messages? ──> crossbeam-channel (Sync) / tokio::sync::mpsc (Async)
+        ├── Concurrent reads, occasional writes? ──> std::sync::RwLock
+        ├── Short critical sections? ──> std::sync::Mutex
+        ├── Lock-free counters or flags? ──> std::sync::atomic (Relaxed / Acquire-Release)
+        └── Complex signaling / condition testing? ──> std::sync::Condvar
+```
+
+[Go to the Top](#table-of-content)
+
+---
+
