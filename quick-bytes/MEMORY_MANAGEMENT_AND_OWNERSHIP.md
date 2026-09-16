@@ -3,6 +3,8 @@
 <!-- markdownlint-disable MD025 -->
 <!-- markdownlint-disable MD026 -->
 <!-- markdownlint-disable MD040 -->
+<!-- markdownlint-disable MD056 -->
+<!-- markdownlint-disable MD060 -->
 
 # Memory Management and Ownership
 

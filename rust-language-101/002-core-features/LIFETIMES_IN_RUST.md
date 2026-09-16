@@ -1,8 +1,10 @@
 <!-- markdownlint-disable MD001 -->
 <!-- markdownlint-disable MD024 -->
 <!-- markdownlint-disable MD025 -->
-<!-- markdownlint-disable MD029 -->
+<!-- markdownlint-disable MD026 -->
 <!-- markdownlint-disable MD040 -->
+<!-- markdownlint-disable MD056 -->
+<!-- markdownlint-disable MD060 -->
 
 # The Mechanics of Rust Lifetimes: From First Principles to Advanced Variance
 
