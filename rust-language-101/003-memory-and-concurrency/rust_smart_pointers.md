@@ -1,8 +1,11 @@
 <!-- markdownlint-disable MD001 -->
+<!-- markdownlint-disable MD012 -->
 <!-- markdownlint-disable MD024 -->
 <!-- markdownlint-disable MD025 -->
-<!-- markdownlint-disable MD029 -->
+<!-- markdownlint-disable MD026 -->
 <!-- markdownlint-disable MD040 -->
+<!-- markdownlint-disable MD056 -->
+<!-- markdownlint-disable MD060 -->
 
 # Comprehensive Guide to Rust Smart Pointers
 
@@ -2236,7 +2239,7 @@ let guard = match mutex.lock() {
 
 Deadlocks happen in two common ways:
 
-1. **Self-Deadlock (Non-Reentrant Lock):** Standard `Mutex<T>` in Rust is non-reentrant.  
+**Self-Deadlock (Non-Reentrant Lock):** Standard `Mutex<T>` in Rust is non-reentrant.  
   If the same thread attempts to lock a mutex it already holds, it will freeze forever waiting for itself to release it:
 
 ```rust
@@ -2245,7 +2248,7 @@ let _g1 = lock.lock().unwrap();
 let _g2 = lock.lock().unwrap(); // DEADLOCK: Waits on itself forever!
 ```
 
-2. **Lock-Ordering Inversion:** Thread A locks Mutex 1, then waits for Mutex 2. Thread B locks Mutex 2, then waits for Mutex 1.
+**Lock-Ordering Inversion:** Thread A locks Mutex 1, then waits for Mutex 2. Thread B locks Mutex 2, then waits for Mutex 1.
 
 ### 4. Practical Code Demonstrations
 
@@ -2991,14 +2994,14 @@ let s: String = *b; // Completely legal! Moves the String out and frees the Box 
 
 `Box` is not a default tool for everything. Heap allocation has costs:
 
-1. **Do not box small, cheap types:**
+**Do not box small, cheap types:**
 
 ```rust
 let x = Box::new(10); // ANTI-PATTERN: You spent 8 bytes on stack + 4 bytes on heap + allocator latency
 let x = 10;           // PREFERRED: Just put it on the stack
 ```
 
-2. **Pointer Chasing (Cache Misses):**
+**Pointer Chasing (Cache Misses):**
 Accessing data on the stack is direct.  
 Accessing data in a `Box` requires following a pointer to RAM, which can cause CPU cache misses.  
 If you have a collection of items, prefer a contiguous `Vec<T>` over a linked list of `Box<Node>`.

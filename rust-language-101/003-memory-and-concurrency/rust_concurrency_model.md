@@ -1,4 +1,5 @@
 <!-- markdownlint-disable MD001 -->
+<!-- markdownlint-disable MD012 -->
 <!-- markdownlint-disable MD024 -->
 <!-- markdownlint-disable MD025 -->
 <!-- markdownlint-disable MD026 -->
