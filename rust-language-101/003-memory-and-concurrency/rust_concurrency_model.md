@@ -737,3 +737,323 @@ fn main() {
 [Go to the Top](#table-of-content)
 
 ---
+
+## Phase 3: Message-Passing Architecture (`std::sync::mpsc`)
+
+Message passing treats threads as independent isolation zones that coordinate strictly by sending discrete packets of data.  
+Instead of sharing a pointer and managing lock contention, threads transfer ownership of memory across thread boundaries.  
+
+### Module 3.1: Channel Mechanics & Internal Queue Topologies
+
+To write reliable channel code, you need to know how the runtime moves bytes between threads without deadlocking or exhausting RAM.
+
+#### 1. Unbounded Channel Internals (`mpsc::channel`)
+
+An unbounded channel is backed by an intrusive, dynamically allocated linked list of memory blocks (often linked lists of small arrays to preserve cache locality).
+
+```text
+Producer Threads                    Channel State in Heap                      Consumer Thread
+[ Thread A: tx ] ──┐                                                      
+                   ├── atomic CAS ──> [ Head Node ] ──> [ Node ] ──> [ Tail ] ──> [ Thread C: rx ]
+[ Thread B: tx2 ] ─┘                 (Enqueues items)               (Dequeues items)
+```
+
+- **Enqueue (`tx.send`)**:  
+  Pushes a node onto the tail of the concurrent queue using atomic Compare-And-Swap (CAS) instructions.  
+  This operation is **strictly lock-free and non-blocking**.  
+  It never yields the CPU, meaning the sending thread can continue immediately.
+- **Dequeue (`rx.recv`)**:  
+  If the queue holds data, `recv()` updates the head pointer and returns `Ok(T)`.  
+  If the queue is empty, the consumer issues an OS-level thread-parking call (e.g., `futex` on Linux) to sleep until a producer enqueues an item and wakes it up.
+- **Failure Mode (OOM)**:  
+  Because `tx.send` never blocks, an unthrottled producer enqueuing data faster than the consumer can process it will cause heap memory to expand indefinitely until the OS issues an Out-Of-Memory kill signal.
+
+#### 2. Bounded Channel Internals (`mpsc::sync_channel`)
+
+A bounded channel is fundamentally different: it is backed by a **fixed-size ring buffer array** guarded by atomic sequence counters and synchronization flags.
+
+```text
+       [Slot 0] ──> [Slot 1] ──> [Slot 2 (Full)] ──> [Slot 3 (Full)]
+          ^                                               ^
+          │ (Read Pointer: rx)                            │ (Write Pointer: tx)
+```
+
+- When `write_pointer == read_pointer + capacity`, the ring buffer is full.
+- Any thread calling `tx.send()` registers itself in a waiting queue and puts itself to sleep (parks).
+- As soon as the consumer thread calls `rx.recv()`, it frees a slot in the ring buffer, increments the read pointer, and unparks one waiting sender thread.
+- **Rendezvous Channels (`sync_channel(0)`)**:  
+  A buffer size of zero bypasses intermediate queue storage entirely.  
+  A producer cannot complete `tx.send()` until a consumer is actively executing `rx.recv()` at that exact moment.  
+  Data is copied directly from the producer's stack/registers into the consumer's variable.
+
+### Module 3.2: Lifecycle, Panics, and Topologies
+
+Channels in Rust follow deterministic RAII patterns. Disconnections, cancellations, and shutdowns are communicated entirely through enum returns rather than exceptions.
+
+#### 1. The Disconnection Invariant
+
+A channel connection is governed by atomic reference counting inside the channel's shared state:
+
+```text
+Sender Count:   AtomicUsize (tracks total live `Sender` handles)
+Receiver Count: AtomicUsize (tracks live `Receiver` handles: max 1 in std::mpsc)
+```
+
+| Method Called   | Channel State                            | Result Returned                                   |
+| --------------- | ---------------------------------------- | ------------------------------------------------- |
+| `tx.send(val)`  | Receiver is dead (`Receiver Count == 0`) | `Err(SendError(val))` (returns the un-sent item!) |
+| `rx.recv()`     | Buffer empty AND `Sender Count > 0`      | Blocks calling thread                             |
+| `rx.recv()`     | Buffer empty AND `Sender Count == 0`     | `Err(RecvError)` (stream has cleanly terminated)  |
+| `rx.try_recv()` | Buffer empty AND `Sender Count > 0`      | `Err(TryRecvError::Empty)`                        |
+| `rx.try_recv()` | Buffer empty AND `Sender Count == 0`     | `Err(TryRecvError::Disconnected)`                 |
+
+> **Critical Safety Feature:** When `tx.send(val)` fails because the consumer died, it returns `SendError(val)`.  
+> It **returns ownership of the item back to the caller**, preventing data loss if you want to retry or serialize the message to disk.
+
+#### 2. Channel Topologies
+
+```text
+1. Many-to-One (Fan-In):             2. Request-Response (Actor Pattern):
+   [ Worker 1: tx ] ──┐                 [ Client Thread ]
+   [ Worker 2: tx ] ──┼──> [ rx ]         │  ▲  tx.send(Req { reply_tx, .. })
+   [ Worker 3: tx ] ──┘                   ▼  │  rx.recv()
+                                        [ Server Thread ]
+```
+
+#### The Request-Response (Bidirectional) Pattern
+
+Because `std::mpsc::Receiver` cannot be cloned, two-way communication cannot share a single channel.  
+Instead, the producer creates an ephemeral, one-shot response channel and packs its `Sender` directly into the payload struct:
+
+```rust
+use std::sync::mpsc;
+use std::thread;
+
+// 1. The Request payload includes a return channel
+struct WorkOrder {
+    data: String,
+    // Ephemeral one-shot sender for the answer
+    reply_channel: mpsc::Sender<Result<usize, &'static str>>,
+}
+
+fn main() {
+    let (order_tx, order_rx) = mpsc::channel::<WorkOrder>();
+
+    // Dedicated backend worker
+    thread::spawn(move || {
+        while let Ok(order) = order_rx.recv() {
+            let processed_len = order.data.len();
+            // Send the response directly back to the specific caller
+            let _ = order.reply_channel.send(Ok(processed_len));
+        }
+    });
+
+    // Client thread submits job and waits for the specific response
+    let (reply_tx, reply_rx) = mpsc::channel();
+    order_tx
+        .send(WorkOrder {
+            data: String::from("Compute my byte length"),
+            reply_channel: reply_tx,
+        })
+        .unwrap();
+
+    // Block until our specific reply arrives
+    let length = reply_rx.recv().unwrap().unwrap();
+    println!("Backend worker responded with length: {length}");
+}
+```
+
+### Module 3.3: Ecosystem Standard: `crossbeam-channel`
+
+While `std::sync::mpsc` is reliable for basic tasks, real-world systems hit its limitations quickly:
+
+1. `std::mpsc` is **Single-Consumer only**. You cannot have multiple worker threads competing for tasks off the same queue without wrapping the receiver in an `Arc<Mutex<Receiver<T>>>` (which defeats the purpose of channels).
+2. `std::mpsc` lacks the ability to **select** over multiple channels simultaneously (listening for a message OR a cancellation signal OR a timeout).
+
+The `crossbeam-channel` crate is the de facto standard replacement.
+
+#### Key Enhancements of `crossbeam-channel`:
+
+- **MPMC (Multi-Producer, Multi-Consumer):**  
+  Both `Sender` and `Receiver` implement `Clone` and `Send`.  
+  Multiple threads can pull concurrently from the same channel buffer with zero mutexes.
+- **Cache-Padded Ring Buffers:**  
+  Crossbeam’s internals use hardware cache-line padding (`CachePadded<T>`) to prevent false sharing between reader and writer atomic indices.
+- **The `select!` Macro:**  
+  Allows a thread to block on multiple channels at the same time, processing whichever event completes first.
+
+#### The `select!` Event Loop Pattern
+
+```rust
+// Requires: crossbeam-channel = "0.5"
+use crossbeam_channel::{select, tick, unbounded};
+use std::time::Duration;
+
+fn main() {
+    let (data_tx, data_rx) = unbounded();
+    let (stop_tx, stop_rx) = unbounded();
+    
+    // Ticks every 500ms
+    let ticker = tick(Duration::from_millis(500));
+
+    // Worker Event Loop
+    loop {
+        select! {
+            recv(data_rx) -> msg => {
+                match msg {
+                    Ok(val) => println!("Received data: {val}"),
+                    Err(_) => break, // All senders disconnected
+                }
+            }
+            recv(ticker) -> _ => {
+                println!("Heartbeat: system healthy...");
+            }
+            recv(stop_rx) -> _ => {
+                println!("Shutdown signal received. Cleaning up...");
+                break;
+            }
+        }
+    }
+}
+```
+
+### Phase 3 Milestone: Multi-Threaded Task Dispatcher with Poison-Pill Shutdown
+
+To demonstrate production message passing, we will build a multi-threaded task runner.
+
+**Design Requirements:**
+
+- A central dispatcher sends `Task` variants to a pool of persistent worker threads.
+- Multiple workers pull from a single, shared work queue.
+- The system utilizes the **Poison Pill Pattern**: sending a terminal signal through the channel to trigger a graceful worker shutdown, verifying that zero jobs are dropped mid-flight.
+
+```text
+Dispatcher (Main)
+  │
+  ├── Tasks Enqueued ──> [ Shared Channel Buffer ]
+  │                              │      │      │
+  │                              ▼      ▼      ▼
+  │                          Worker 0 Worker 1 Worker 2
+  │                             │       │       │
+  └── Sends Poison Pills ───────┴───────┴───────┘
+```
+
+```rust
+use std::sync::{mpsc, Arc, Mutex};
+use std::thread;
+use std::time::Duration;
+
+/// Types of messages our workers can process
+enum Message {
+    NewTask(Task),
+    Shutdown, // The "Poison Pill"
+}
+
+struct Task {
+    id: usize,
+    work_units: u64,
+}
+
+/// A wrapper around mpsc::Receiver to share it across multiple threads (MPMC emulation)
+#[derive(Clone)]
+struct SharedReceiver<T> {
+    inner: Arc<Mutex<mpsc::Receiver<T>>>,
+}
+
+impl<T> SharedReceiver<T> {
+    fn new(rx: mpsc::Receiver<T>) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(rx)),
+        }
+    }
+
+    fn recv(&self) -> Result<T, mpsc::RecvError> {
+        let guard = self.inner.lock().unwrap();
+        guard.recv()
+    }
+}
+
+fn main() {
+    const WORKER_COUNT: usize = 3;
+    const TOTAL_TASKS: usize = 9;
+
+    let (tx, rx) = mpsc::channel::<Message>();
+    let shared_rx = SharedReceiver::new(rx);
+
+    let mut workers = Vec::with_capacity(WORKER_COUNT);
+
+    // 1. Spawn Worker Pool
+    for worker_id in 0..WORKER_COUNT {
+        let rx_handle = shared_rx.clone();
+
+        let handle = thread::spawn(move || {
+            println!("[Worker {worker_id}] Online and waiting for jobs.");
+            
+            loop {
+                // Each worker pulls tasks from the single shared queue
+                match rx_handle.recv() {
+                    Ok(Message::NewTask(task)) => {
+                        println!(
+                            "[Worker {worker_id}] Executing Task #{} (weight: {})",
+                            task.id, task.work_units
+                        );
+                        // Simulate work
+                        thread::sleep(Duration::from_millis(task.work_units * 40));
+                    }
+                    Ok(Message::Shutdown) => {
+                        println!("[Worker {worker_id}] Poison pill received. Shutting down.");
+                        break;
+                    }
+                    Err(_) => {
+                        // All senders were dropped unexpectedly
+                        eprintln!("[Worker {worker_id}] Channel hung up unexpectedly!");
+                        break;
+                    }
+                }
+            }
+        });
+
+        workers.push(handle);
+    }
+
+    // 2. Dispatch Work Items
+    for i in 1..=TOTAL_TASKS {
+        let task = Task {
+            id: i,
+            work_units: (i % 4) + 1,
+        };
+        tx.send(Message::NewTask(task)).unwrap();
+    }
+
+    println!("\n>>> Dispatcher: All {TOTAL_TASKS} tasks enqueued. Initiating graceful shutdown... <<<\n");
+
+    // 3. Send one Poison Pill per worker
+    for _ in 0..WORKER_COUNT {
+        tx.send(Message::Shutdown).unwrap();
+    }
+
+    // 4. Drop the main sender so the channel can close
+    drop(tx);
+
+    // 5. Join all workers to guarantee all tasks completed
+    for (id, handle) in workers.into_iter().enumerate() {
+        handle.join().unwrap();
+        println!("Worker thread {id} successfully joined.");
+    }
+
+    println!("\nSystem cleanly terminated: All tasks drained, zero leaks.");
+}
+```
+
+| Feature           | `mpsc::channel`        | `mpsc::sync_channel`   | `crossbeam_channel`  |
+| ----------------- | ---------------------- | ---------------------- | -------------------- |
+| **Topology**      | MPSC                   | MPSC                   | **MPMC**             |
+| **Buffer Type**   | Dynamic unbounded list | Fixed-size ring buffer | Bounded or Unbounded |
+| **Backpressure**  | No (Can OOM)           | Yes (Blocks sender)    | Yes (Blocks sender)  |
+| **Multiplexing**  | None                   | None                   | `select!` macro      |
+| **Zero-Capacity** | No                     | Yes (Rendezvous)       | Yes (Rendezvous)     |
+
+[Go to the Top](#table-of-content)
+
+---
+
