@@ -4,6 +4,6 @@
 - [002 Core Features](./002-core-features/README.md)
 - [003 Memory and Concurrency](./003-memory-and-concurrency/README.md)
 - [004 Advanced Rust](./004-advanced-rust/README.md)
-- [005 Code Snippets](./005-code-snippets/README.md)
+- [005 Hands on](./005-rust-hands-on/README.md)
 
 ---
