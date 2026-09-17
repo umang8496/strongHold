@@ -16,6 +16,11 @@ This project helps get the developer familiar with the hands-on rust coding.
 - [Exercise 003 (String vs &str)](#exercise-003)
 - [Exercise 004 (Vec)](#exercise-004)
 - [Exercise 005 (Vec + &[i32])](#exercise-005)
+- [Exercise 006 (Vec + Filtering)](#exercise-006)
+- [Exercise 007 (Don't consume the input)](#exercise-007)
+- [Exercise 008 (Find + Option)](#exercise-008)
+- [Exercise 009 (`Option<T>`)](#exercise-009)
+- [Exercise 010 (`Option` + `match`)](#exercise-010)
 
 ---
 
@@ -203,7 +208,7 @@ fn main() {
 
 ## Exercise 005
 
-Write sum() again, but this time:
+Write `sum()` again, but this time:
 
 - `fn sum(numbers: &[i32]) -> i32`
 - Requirements:
@@ -273,5 +278,223 @@ fn main() {
 
 - Rust can perform automatic dereferencing in certain operations, which is why `sum += number;` can work even when number is `&i32`.
 - `usize` is the conventional Rust type for sizes, lengths, and indexes; `str::len()` returns `usize`.
+
+---
+
+## Exercise 006
+
+- Given: `let numbers = vec![10, 15, 20, 25, 30, 35, 40];`
+- Write: `fn even_numbers(numbers: &[i32]) -> Vec<i32>`
+- It should return a new `Vec<i32>` containing only the even numbers.
+- Expected output: `[10, 20, 30, 40]`
+- Constraints:
+  - Borrow the input; don't consume it.
+  - Return a new `Vec<i32>`.
+  - Use a `for` loop.
+  - Don't use `.filter()`, `.map()`, `.collect()`, etc. yet.
+
+### Response
+
+```rust
+fn even_numbers(numbers: &[i32]) -> Vec<i32> {
+    let mut array_of_even_number: Vec<i32> = Vec::new();
+    for &number in numbers {
+        if number % 2 == 0 {
+            array_of_even_number.push(number);
+        }
+    }
+
+    array_of_even_number
+}
+
+fn even_numbers_another_impl(numbers: &[i32]) -> Vec<i32> {
+    let mut array_of_even_number: Vec<i32> = Vec::new();
+    for number in numbers {
+        if number % 2 == 0 {
+            array_of_even_number.push(*number);
+        }
+    }
+
+    array_of_even_number
+}
+
+fn main() {
+    let numbers = vec![10, 15, 20, 25, 30, 35, 40];
+    let array_of_even_number: Vec<i32> = even_numbers(&numbers);
+    println!("{:?}", array_of_even_number);
+}
+```
+
+---
+
+## Exercise 007
+
+Let's make ownership slightly more explicit:
+
+- Write: `fn double_numbers(numbers: &[i32]) -> Vec<i32>`
+- Given: `let numbers = vec![1, 2, 3, 4, 5];`
+- Expectation: `[2, 4, 6, 8, 10]`
+
+- Constraints:
+  - Input must be `&[i32]`
+  - Output must be `Vec<i32>`
+  - Use a `for` loop
+  - Don't use `.map()`, `.collect()`, etc.
+  - After calling `double_numbers()`, print the original numbers as well.
+
+### Response
+
+```rust
+fn double_numbers(numbers: &[i32]) -> Vec<i32> {
+    let mut doubled_numbers: Vec<i32> = Vec::new();
+    for &number in numbers {
+        doubled_numbers.push(2 * number);
+    }
+
+    doubled_numbers
+}
+
+fn main() {
+    let numbers: Vec<i32> = vec![1, 2, 3, 4, 5];
+    let doubled_numbers: Vec<i32> = double_numbers(&numbers);
+    println!("{:?}", numbers);
+    println!("{:?}", doubled_numbers);
+}
+```
+
+---
+
+## Exercise 008
+
+Now let's introduce `Option`, which is one of the most important Rust types:
+
+- Implement: `fn find_number(numbers: &[i32], target: i32) -> ???`
+- Given: `let numbers = vec![10, 20, 30, 40, 50];`
+- Calling `find_number(&numbers, 30);` should produce `Found: 30`.
+- While `find_number(&numbers, 99);` should produce: `Number not found`.
+- Expectation: `[2, 4, 6, 8, 10]`
+- Constraints:
+  - Use a `for` loop
+  - Don't use `.iter().find()`.
+  - Don't use `unwrap()`.
+  - You need to decide what the return type should be.
+
+### Response
+
+```rust
+fn find_number(numbers: &[i32], target: i32) -> Option<i32> {
+    for &number in numbers {
+        if number == target {
+            return Option::Some(number);
+        }
+    }
+
+    Option::None
+}
+
+fn match_the_result(result: &Option<i32>) {
+    match result {
+        Some(number) => println!("Found: {}", number),
+        None => println!("Number not found")
+    }
+}
+
+fn main() {
+    let numbers = vec![10, 20, 30, 40, 50];
+    let result: Option<i32> = find_number(&numbers, 30);
+    match_the_result(&result);
+    let another_result: Option<i32> = find_number(&numbers, 99);
+    match_the_result(&another_result);
+}
+```
+
+---
+
+## Exercise 009
+
+- Implement: `fn first_even(numbers: &[i32]) -> Option<i32>`
+- Given: `[11, 13, 17, 20, 25, 30]` return `Some(20)`
+- If the input is `[11, 13, 17, 25]` then return `None`
+- Constraints:
+  - Use a `for` loop
+  - Don't use `.iter().find()`.
+  - Don't use `unwrap()`.
+  - You need to decide what the return type should be.
+
+### Response
+
+```rust
+fn first_even(numbers: &[i32]) -> Option<i32> {
+    for &number in numbers {
+        if number % 2 == 0 {
+            return Option::Some(number)
+        }
+    }
+
+    Option::None
+}
+
+fn main() {
+    let input_a: [i32; 6] = [11, 13, 17, 20, 25, 30];
+    println!("{:?}", first_even(&input_a));
+    let input_b: [i32; 4] = [11, 13, 17, 25];
+    println!("{:?}", first_even(&input_b));
+}
+```
+
+---
+
+## Exercise 010
+
+Let's now make you consume the Option through pattern matching.
+
+- Implement: `fn first_even(numbers: &[i32]) -> Option<i32>` as before.
+- But this time `main()` should produce:
+
+    ```text
+        First even number: 20
+        No even number found
+    ```
+
+    for:
+
+    ```text
+        [11, 13, 17, 20, 25, 30]
+        [11, 13, 17, 25]
+    ```
+
+- Constraints:
+  - Use a `for` loop
+  - Don't use `.iter().find()`.
+  - Don't use `unwrap()`.
+  - Don't use `if let` yet.
+
+### Response
+
+```rust
+fn first_even(numbers: &[i32]) -> Option<i32> {
+    for &number in numbers {
+        if number % 2 == 0 {
+            return Option::Some(number)
+        }
+    }
+
+    Option::None
+}
+
+fn match_the_result(result: &Option<i32>) {
+    match result {
+        Some(number) => println!("First even number: {}", number),
+        None => println!("No even not found")
+    }
+}
+
+fn main() {
+    let input_a: [i32; 6] = [11, 13, 17, 20, 25, 30];
+    match_the_result(&first_even(&input_a));
+    let input_b: [i32; 4] = [11, 13, 17, 25];
+    match_the_result(&first_even(&input_b));
+}
+```
 
 ---
