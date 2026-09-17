@@ -11,6 +11,8 @@
 
 This project helps get the developer familiar with the hands-on rust coding.  
 
+## Table of Content
+
 - [Exercise 001 (Variables + Functions)](#exercise-001)
 - [Exercise 002 (String vs &str)](#exercise-002)
 - [Exercise 003 (String vs &str)](#exercise-003)
@@ -61,6 +63,8 @@ fn main() {
     println!("Product: {}", multiply(a, b));
 }
 ```
+
+[Go to the Top](#table-of-content)
 
 ---
 
@@ -116,6 +120,8 @@ fn main() {
         result.push_str(name)
     ```
 
+[Go to the Top](#table-of-content)
+
 ---
 
 ## Exercise 003
@@ -151,6 +157,8 @@ Here is the function signature:
 ```rust
 pub const fn len(&self) -> usize {...}
 ```
+
+[Go to the Top](#table-of-content)
 
 ---
 
@@ -203,6 +211,8 @@ fn main() {
 - Iterating directly over an owned `Vec`, `for number in numbers` consumes/moves the vector.
 - `Vec<T>` is typically used when the collection size can change at runtime.
 - Arrays are useful when the size is known and fixed at compile time.
+
+[Go to the Top](#table-of-content)
 
 ---
 
@@ -279,6 +289,8 @@ fn main() {
 - Rust can perform automatic dereferencing in certain operations, which is why `sum += number;` can work even when number is `&i32`.
 - `usize` is the conventional Rust type for sizes, lengths, and indexes; `str::len()` returns `usize`.
 
+[Go to the Top](#table-of-content)
+
 ---
 
 ## Exercise 006
@@ -325,6 +337,8 @@ fn main() {
 }
 ```
 
+[Go to the Top](#table-of-content)
+
 ---
 
 ## Exercise 007
@@ -361,6 +375,8 @@ fn main() {
     println!("{:?}", doubled_numbers);
 }
 ```
+
+[Go to the Top](#table-of-content)
 
 ---
 
@@ -408,6 +424,8 @@ fn main() {
 }
 ```
 
+[Go to the Top](#table-of-content)
+
 ---
 
 ## Exercise 009
@@ -441,6 +459,8 @@ fn main() {
     println!("{:?}", first_even(&input_b));
 }
 ```
+
+[Go to the Top](#table-of-content)
 
 ---
 
@@ -496,5 +516,7 @@ fn main() {
     match_the_result(&first_even(&input_b));
 }
 ```
+
+[Go to the Top](#table-of-content)
 
 ---
