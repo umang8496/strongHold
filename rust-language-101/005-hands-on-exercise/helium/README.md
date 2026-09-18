@@ -27,6 +27,12 @@ This project helps get the developer familiar with the hands-on rust coding.
 - [Exercise 012 (`Option<String>` + Ownership)](#exercise-012)
 - [Exercise 013 (Structs + Methods)](#exercise-013)
 - [Exercise 014 (Enums + Pattern Matching)](#exercise-014)
+- [Exercise 015 (Traits Impl)](#exercise-015)
+- [Exercise 016 (Trait Bounds + Generics)](#exercise-016)
+- [Exercise 017 (Generic function with two trait bounds)](#exercise-017)
+- [Exercise 018 (Generic function impl Trait)](#exercise-018)
+- [Exercise 019 (Generic Type + Multiple Parameters)](#exercise-019)
+- [Exercise 020 (Trait Objects / Dynamic Dispatch)](#exercise-020)
 
 ---
 
@@ -762,6 +768,596 @@ fn main() {
     println!("Rectangle area: {}", area(&rectangle));
 }
 ```
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 015
+
+- Create two structs:
+
+    ```rust
+        struct Circle {
+            radius: f64,
+        }
+
+        struct Rectangle {
+            width: f64,
+            height: f64,
+        }
+    ```
+
+- Define the trait:
+
+    ```rust
+        trait Area {
+            fn area(&self) -> f64;
+        }
+    ```
+
+- Then implement the trait for both structs.
+- Expected behaviour.
+
+    ```rust
+        let circle = Circle { radius: 5.0 };
+        let rectangle = Rectangle {
+            width: 10.0,
+            height: 4.0,
+        };
+
+        println!("Circle: {}", circle.area());
+        println!("Rectangle: {}", rectangle.area());
+    ```
+
+- Constraints:
+  - Use `match`.
+  - `area()` must borrow the `Shape`; don't consume it.
+  - Don't use `if let`.
+  - Don't derive any traits.
+  - Don't use `enum` for this exercise.
+  - Use `std::f64::consts::PI` for the circle calculation.
+
+### Response
+
+```rust
+struct Circle {
+    radius: f64,
+}
+
+struct Rectangle {
+    length: f64,
+    width: f64,
+}
+
+trait Area {
+    fn area(&self) -> f64;
+}
+
+impl Area for Circle {
+    fn area(&self) -> f64 {
+        std::f64::consts::PI * self.radius * self.radius
+    }
+}
+
+impl Area for Rectangle {
+    fn area(&self) -> f64 {
+        self.length * self.width
+    }
+}
+
+fn main() {
+    let circle = Circle { radius: 10.0 };
+    let rectangle = Rectangle {
+        length: 10.0,
+        width: 5.0,
+    };
+
+    println!("Circle: {}", circle.area());
+    println!("Rectangle: {}", rectangle.area());
+}
+```
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 016
+
+Now let's make the Area trait useful across different types.
+
+- Reuse the trait:
+
+    ```rust
+        trait Area {
+            fn area(&self) -> f64;
+        }
+    ```
+
+- Create a genric function: `fn print_area<T: Area>(shape: &T)`.
+- It should print: `Area: <calculated area>`
+- Given:
+
+    ```rust
+        let circle = Circle { radius: 5.0 };
+        let rectangle = Rectangle {
+            length: 10.0,
+            width: 4.0,
+        };
+    ```
+
+    both should be accepted by the same print_area() function.
+
+- Constraints:
+  - Use `match`.
+  - Use a trait bound: `T: Area`
+  - `print_area()` must borrow the shape
+  - Don't use `dyn Area` yet.
+  - Don't duplicate `print_area()` for each concrete type.
+
+### Response
+
+```rust
+trait Area {
+    fn area(&self) -> f64;
+}
+
+struct Circle {
+    radius: f64,
+}
+
+impl Area for Circle {
+    fn area(&self) -> f64 {
+        std::f64::consts::PI * self.radius * self.radius
+    }
+}
+
+struct Rectangle {
+    length: f64,
+    breadth: f64,
+}
+
+impl Area for Rectangle {
+    fn area(&self) -> f64 {
+        self.length * self.breadth
+    }
+}
+
+fn print_area<T: Area>(shape: &T) {
+    let calculated_area: f64 = shape.area();
+    println!("Area: {}", calculated_area);
+}
+
+fn main() {
+    let circle = Circle { radius: 10.0 };
+    let rectangle = Rectangle {
+        length: 10.0,
+        breadth: 5.0,
+    };
+    print_area(&circle);
+    print_area(&rectangle);
+}
+```
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 017
+
+- Create a function `fn describe<T: Area + ???>(shape: &T)`
+- It requires to print both:
+
+    ```text
+        Area: 314.159...
+        Shape: Circle { radius: 10.0 }
+    ```
+
+- The `Circle` and `Rectangle` should remain as they are.
+- Make `describe()` work for both.
+- Constraints:
+  - Use a generic `T`.
+  - `T` must implement `Area`.
+  - `T` must also satisfy whatever is necessary for `{:?}`.
+  - Don't use `dyn`.
+  - Don't manually implement formatting yet.
+
+### Response
+
+```rust
+trait Area {
+    fn area(&self) -> f64;
+}
+
+struct Circle {
+    radius: f64,
+}
+
+impl Area for Circle {
+    fn area(&self) -> f64 {
+        std::f64::consts::PI * self.radius * self.radius
+    }
+}
+
+impl std::fmt::Display for Circle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Circle {{ radius: {} }}", self.radius)
+    }
+}
+
+struct Rectangle {
+    length: f64,
+    breadth: f64,
+}
+
+impl Area for Rectangle {
+    fn area(&self) -> f64 {
+        self.length * self.breadth
+    }
+}
+
+impl std::fmt::Display for Rectangle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Rectangle {{ length: {}, breadth: {} }}", self.length, self.breadth)
+    }
+}
+
+fn describe<T: Area + std::fmt::Display>(shape: &T) {
+    println!("Area: {}", &shape.area());
+    println!("Shape: {}", &shape);
+}
+
+fn main() {
+    let circle = Circle { radius: 10.0 };
+    let rectangle = Rectangle {
+        length: 10.0,
+        breadth: 5.0,
+    };
+    describe(&circle);
+    describe(&rectangle);
+}
+```
+
+Another implementation which uses `std::fmt::Debug` trait instead of `std::fmt::Display` one.
+
+```rust
+trait Area {
+    fn area(&self) -> f64;
+}
+
+#[derive(Debug)]
+struct Circle {
+    radius: f64,
+}
+
+impl Area for Circle {
+    fn area(&self) -> f64 {
+        std::f64::consts::PI * self.radius * self.radius
+    }
+}
+
+#[derive(Debug)]
+struct Rectangle {
+    length: f64,
+    breadth: f64,
+}
+
+impl Area for Rectangle {
+    fn area(&self) -> f64 {
+        self.length * self.breadth
+    }
+}
+
+fn describe<T: Area + std::fmt::Debug>(shape: &T) {
+    println!("Area: {}", &shape.area());
+    println!("Shape: {:?}", &shape);
+}
+
+fn main() {
+    let circle = Circle { radius: 10.0 };
+    let rectangle = Rectangle {
+        length: 10.0,
+        breadth: 5.0,
+    };
+    describe(&circle);
+    describe(&rectangle);
+}
+```
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 018
+
+- Write the same describe functionality, but instead of: `fn describe<T: Area + Debug>(shape: &T)` use `fn describe(shape: &impl Area + ???)`.
+- Make it work for both `Circle` and `Rectangle`.
+- Constraints:
+  - Use `match`.
+  - Use a trait bound: `T: Area`
+  - `print_area()` must borrow the shape
+  - Don't use `dyn Area` yet.
+  - Don't duplicate `print_area()` for each concrete type.
+
+### Response
+
+```rust
+trait Area {
+    fn area(&self) -> f64;
+}
+
+#[derive(Debug)]
+struct Circle {
+    radius: f64,
+}
+
+impl Area for Circle {
+    fn area(&self) -> f64 {
+        std::f64::consts::PI * self.radius * self.radius
+    }
+}
+
+#[derive(Debug)]
+struct Rectangle {
+    length: f64,
+    breadth: f64,
+}
+
+impl Area for Rectangle {
+    fn area(&self) -> f64 {
+        self.length * self.breadth
+    }
+}
+
+fn describe(shape: &(impl Area + std::fmt::Debug)) {
+    println!("Area: {}", &shape.area());
+    println!("Shape: {:?}", &shape);
+}
+
+fn main() {
+    let circle = Circle { radius: 10.0 };
+    let rectangle = Rectangle {
+        length: 10.0,
+        breadth: 5.0,
+    };
+    describe(&circle);
+    describe(&rectangle);
+}
+```
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 019
+
+- Create: `fn same_area<T: Area>(a: &T, b: &T) -> bool`
+- It should return `true` if both shapes have the same area.
+- For example:
+
+    ```rust
+        let circle1 = Circle { radius: 5.0 };
+        let circle2 = Circle { radius: 5.0 };
+        same_area(&circle1, &circle2); // true
+    ```
+
+- It should print: `Area: <calculated area>`
+- Also test:
+
+    ```rust
+        let rectangle = Rectangle {
+            length: 10.0,
+            breadth: 4.0,
+        };
+    ```
+
+    both should be accepted by the same print_area() function.
+
+- Constraints:
+  - Use <T: Area>.
+  - Both parameters must use `T`.
+  - Don't use `impl Trait`.
+  - Don't use `dyn`.
+  - Return only `true` or `false`.
+
+### Response
+
+```rust
+trait Area {
+    fn area(&self) -> f64;
+}
+
+#[derive(Debug)]
+struct Circle {
+    radius: f64,
+}
+
+impl Area for Circle {
+    fn area(&self) -> f64 {
+        std::f64::consts::PI * self.radius * self.radius
+    }
+}
+
+#[derive(Debug)]
+struct Rectangle {
+    length: f64,
+    breadth: f64,
+}
+
+impl Area for Rectangle {
+    fn area(&self) -> f64 {
+        self.length * self.breadth
+    }
+}
+
+// This one works as well
+// fn same_area<T: Area, V: Area>(a: &T, b: &V) -> bool {
+//     a.area() == b.area()
+// }
+
+fn same_area(a: &impl Area, b: &impl Area) -> bool {
+    a.area() == b.area()
+}
+
+fn main() {
+    let circle1 = Circle { radius: 10.0 };
+    let circle2 = Circle { radius: 10.0 };
+    println!("{}", same_area(&circle1, &circle2));    // true
+
+    let rectangle = Rectangle {
+        length: 10.0,
+        breadth: 5.0,
+    };
+
+    println!("{}", same_area(&rectangle, &circle2));    // false
+}
+```
+
+### Learning
+
+- **Trait bound** `T: Area` means `T` must implement the `Area` trait.
+
+- **Single generic type** `fn f<T: Area>(a: &T, b: &T)` means `a` and `b` **must be the same concrete type**.
+
+- **Multiple generic types** `fn f<T: Area, V: Area>(a: &T, b: &V)` allows `a` and `b` to be **different concrete types**, as long as both implement `Area`.
+
+- **`impl Trait`** `fn f(a: &impl Area, b: &impl Area)` allows each parameter to independently be a type implementing `Area`.
+
+- **Generics vs `impl Trait`**:
+  - Named generics (`T`) let us **relate types across parameters**.
+  - `impl Trait` is useful when we don't need to name or relate the concrete type.
+
+- **Static dispatch**: Generic functions such as: `fn f<T: Area>(shape: &T)` are resolved at compile time through **monomorphization**.
+
+- **Dynamic dispatch: `dyn Trait`**:  
+  - `&dyn Area` introduces **trait objects and dynamic dispatch**, 
+  - allowing different concrete types such as `Circle` and `Rectangle` to be handled through the same interface at runtime.
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 020
+
+Now let's move away from another generic variation and introduce something fundamentally new.
+
+- Given:
+
+    ```rust
+        trait Area {
+            fn area(&self) -> f64;
+        }
+
+        struct Circle {
+            radius: f64,
+        }
+
+        struct Rectangle {
+            length: f64,
+            breadth: f64,
+        }
+    ```
+
+- Implement: `fn print_areas(shapes: &[&dyn Area]) {...}`
+- Then:
+
+    ```rust
+        let circle = Circle { radius: 10.0 };
+        let rectangle = Rectangle {
+            length: 10.0,
+            breadth: 5.0,
+        };
+
+        let shapes: Vec<&dyn Area> = vec![
+            &circle,
+            &rectangle,
+        ];
+
+        print_areas(&shapes);
+    ```
+
+- Constraints:
+  - Don't use generics.
+  - Don't use `impl Trait`.
+  - Don't use `Any`.
+  - Don't use downcasting.
+
+The goal is to understand `dyn Trait` and **dynamic dispatch**.  
+This is our first step from compile-time polymorphism → runtime polymorphism.
+
+### Response
+
+```rust
+trait Area {
+    fn area(&self) -> f64;
+}
+
+#[derive(Debug)]
+struct Circle {
+    radius: f64,
+}
+
+impl Area for Circle {
+    fn area(&self) -> f64 {
+        std::f64::consts::PI * self.radius * self.radius
+    }
+}
+
+#[derive(Debug)]
+struct Rectangle {
+    length: f64,
+    breadth: f64,
+}
+
+impl Area for Rectangle {
+    fn area(&self) -> f64 {
+        self.length * self.breadth
+    }
+}
+
+fn print_areas(shapes: &Vec<&dyn Area>) {
+    for shape in shapes {
+        println!("Area: {}", shape.area());
+    } 
+}
+
+fn main() {
+    let circle = Circle { radius: 10.0 };
+    let rectangle = Rectangle {
+        length: 10.0,
+        breadth: 5.0,
+    };
+
+    let shapes: Vec<&dyn Area> = vec![
+        &circle,
+        &rectangle,
+    ];
+
+    print_areas(&shapes);
+}
+```
+
+One idiomatic improvement: Although your code is valid, Rust conventionally prefers accepting a slice:
+
+```rust
+fn print_areas(shapes: &[&dyn Area]) {
+    for shape in shapes {
+        println!("Area: {}", shape.area());
+    } 
+}
+```
+
+This makes the function usable with both a `Vec` and an `array/slice`, rather than requiring specifically a `Vec`.
+
+### Learning
+
+- `dyn Area`: a trait object representing some type that implements Area
+- `&`dyn Area: a reference to that trait object
+- `Vec<&dyn Area>`: a vector containing references to potentially different Area implementations
+- `&Vec<&dyn Area>`: borrow that vector
+
+- With generics: `fn print_areas<T: Area>(shapes: &[T])`, `T` represents one concrete type.
+- With: `fn print_areas(shapes: &Vec<&dyn Area>)` each element can refer to a different concrete type, as long as it implements Area.
 
 [Go to the Top](#table-of-content)
 
