@@ -25,6 +25,8 @@ This project helps get the developer familiar with the hands-on rust coding.
 - [Exercise 010 (`Option` + `match`)](#exercise-010)
 - [Exercise 011 (Transform an `Option`)](#exercise-011)
 - [Exercise 012 (`Option<String>` + Ownership)](#exercise-012)
+- [Exercise 013 (Structs + Methods)](#exercise-013)
+- [Exercise 014 (Enums + Pattern Matching)](#exercise-014)
 
 ---
 
@@ -627,6 +629,139 @@ fn main() {
 This exercise reinforced a fundamental Rust principle:  
 > Borrowing data doesn't give you ownership of it;  
 > If an owned value must escape the borrow, you need to create/obtain ownership explicitly.
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 013
+
+Let's move into a genuinely new area: structs and impl blocks.
+
+- Create a User struct with: `id, name, age`
+- Then implement a method: `fn is_adult(&self) -> bool` that returns true when the user's age is 18 or greater.
+- Given:
+
+    ```rust
+        let user = User {
+            id: 101,
+            name: String::from("Umang"),
+            age: 30,
+        };
+    ```
+
+- The program should print something equivalent to:
+
+    ```text
+        User: Umang
+        Adult: true
+    ```
+
+- Constraints:
+  - Define `User` using `struct`.
+  - Implement `is_adult()` inside an `impl User` block.
+  - The method must borrow the user; don't consume it.
+  - Print the user's name and result from `main()`.
+  - Don't derive any traits yet.
+  - Don't use `mut`.
+
+### Response
+
+```rust
+struct User {
+    id: i32,
+    name: String,
+    age: i32,
+}
+
+impl User {
+    fn new(id: i32, name: String, age: i32) -> Self {
+        User { id, name, age }
+    }
+
+    fn is_adult(&self) -> bool {
+        self.age >= 18
+    }
+}
+
+fn main() {
+    let user = User::new(1, String::from("Umang"), 20);
+    println!("User: {}", user.name);
+    println!("Adult: {}", user.is_adult());
+}
+```
+
+### Learning (Methods vs Associated Functions)
+
+- Both are defined inside an `impl` block.
+- Method → has a `self` parameter and operates on an instance.
+- `fn is_adult(&self) -> bool` Called as: `user.is_adult()`
+- `self` can be:
+  - `&self` → immutable borrow
+  - `&mut self` → mutable borrow
+  - `self` → takes ownership
+
+- Associated function → has no `self` parameter and belongs to the type itself.
+- `fn new(...) -> Self` Called as: `User::new(...)`
+
+- Rust has no special constructor syntax; `new()` is conventionally implemented as an associated function.
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 014
+
+Let's move to another fundamental Rust feature: `enums`.  
+
+- Define:
+
+    ```rust
+        enum Shape {
+            Circle(f64),
+            Rectangle(f64, f64),
+        }
+    ```
+
+- Then implement a method: `fn area(shape: &Shape) -> f64`.
+- For the following calculate and print the areas.
+
+    ```rust
+        let circle = Shape::Circle(5.0);
+        let rectangle = Shape::Rectangle(10.0, 4.0);
+    ```
+
+- Constraints:
+  - Use `match`.
+  - `area()` must borrow the `Shape`; don't consume it.
+  - Don't use `if let`.
+  - Don't derive any traits.
+  - Use `std::f64::consts::PI` for the circle calculation.
+
+### Response
+
+```rust
+enum Shape {
+    Circle(f64),
+    Rectangle(f64, f64),
+}
+
+
+fn area(shape: &Shape) -> f64 {
+    match shape {
+        Shape::Circle(radius) => std::f64::consts::PI * radius * radius,
+        Shape::Rectangle(width, height) => width * height,
+    }
+}
+
+fn main() {
+    let circle = Shape::Circle(10.0);
+    let rectangle = Shape::Rectangle(10.0, 5.0);
+
+    println!("Circle area: {}", area(&circle));
+    println!("Rectangle area: {}", area(&rectangle));
+}
+```
 
 [Go to the Top](#table-of-content)
 
