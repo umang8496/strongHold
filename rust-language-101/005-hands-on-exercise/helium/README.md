@@ -23,6 +23,8 @@ This project helps get the developer familiar with the hands-on rust coding.
 - [Exercise 008 (Find + Option)](#exercise-008)
 - [Exercise 009 (`Option<T>`)](#exercise-009)
 - [Exercise 010 (`Option` + `match`)](#exercise-010)
+- [Exercise 011 (Transform an `Option`)](#exercise-011)
+- [Exercise 012 (`Option<String>` + Ownership)](#exercise-012)
 
 ---
 
@@ -516,6 +518,115 @@ fn main() {
     match_the_result(&first_even(&input_b));
 }
 ```
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 011
+
+- Implement: `fn double_if_present(value: Option<i32>) -> Option<i32>`
+- Behaviour:
+
+    ```text
+        Some(10) → Some(20)
+        Some(25) → Some(50)
+        None     → None
+    ```
+
+- Constraints:
+  - Use `match`.
+  - Use a `for` loop.
+  - Don't use `.iter().find()`.
+  - Don't use `unwrap()`.
+  - Don't use `if let` yet.
+  - Use `match`.
+  - Don't use `map()` yet.
+
+### Response
+
+```rust
+fn double_if_present(value: Option<i32>) -> Option<i32> {
+    if value.is_some() {
+        return match value {
+            Some(number) => Option::Some(2 * number),
+            None => None
+        }
+    } else {
+        return Option::None;
+    }
+}
+
+fn main() {
+    let option_10: Option<i32> = Option::Some(10);
+    println!("{:?}", double_if_present(option_10));
+    let option_25: Option<i32> = Option::Some(25);
+    println!("{:?}", double_if_present(option_25));
+}
+```
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 012
+
+- Implement: `fn find_name(names: &[String], target: &str) -> Option<String>`
+- Given:
+
+    ```text
+        let names = vec![
+            String::from("Alice"),
+            String::from("Bob"),
+            String::from("Charlie"),
+            String::from("David"),
+        ];
+    ```
+
+- Calling `find_name(&names, "Charlie")` should return `Some("Charlie")`.
+- Calling `find_name(&names, "Eve")` should return `None`.
+- Constraints:
+  - Use a `for` loop
+  - Don't use `.iter().find()`.
+  - Don't use `unwrap()`.
+  - Don't use `if let` yet.
+
+### Response
+
+```rust
+fn find_name(names: &[String], target: &str) -> Option<String> {
+    for name in names {
+        if name == target {
+            return Option::Some(name.clone());
+        }
+    }
+    Option::None
+}
+
+fn main() {
+    let names = vec![
+        String::from("Alice"),
+        String::from("Bob"),
+        String::from("Charlie"),
+        String::from("David"),
+    ];
+
+    println!("{:?}", &find_name(&names, "Charlie"));
+    println!("{:?}", &find_name(&names, "Eve"));
+}
+```
+
+### Learning
+
+- `&[String]` means the function borrows a slice of `String` values; it does not own them.
+- Iterating over a borrowed slice `for name in names` gives `name` as `&String`.
+- With `i32`, we could write: `for &number in numbers` because `i32` implements `Copy`; the underlying value can be copied out of `&i32`.
+- `String` does not implement `Copy`, so we cannot use `for &name in names` to move `String` values out of a borrowed slice.
+- `clone()` creates an owned copy: `name.clone() // &String → String`.
+
+This exercise reinforced a fundamental Rust principle:  
+> Borrowing data doesn't give you ownership of it;  
+> If an owned value must escape the borrow, you need to create/obtain ownership explicitly.
 
 [Go to the Top](#table-of-content)
 
