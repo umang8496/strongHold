@@ -27,6 +27,7 @@ It progresses from foundational concepts to internal compiler mechanics, type sy
 - [Advanced Patterns: Lifetimes, HRTBs, and Async](#11-advanced-patterns-lifetimes-hrtbs-and-async)
 - [Cross-Language Rosetta Stone](#12-cross-language-rosetta-stone)
 - [Quick Reference & Common Compiler Errors](#13-quick-reference--common-compiler-errors)
+- [Callable Traits in Rust](#14-callable-traits-in-rust)
 
 ---
 
@@ -546,5 +547,207 @@ Can the closure be called more than once?
 
 - **Root Cause**: You are returning a closure or sending it across a thread boundary, but it borrows data from the current stack frame.
 - **Fix**: Add the `move` keyword before the closure arguments: `move |...| { ... }`.
+
+---
+
+## 14. Callable Traits in Rust
+
+Rust has three special traits that describe **how a value can be called like a function**:
+
+```text
+Fn
+FnMut
+FnOnce
+```
+
+They are primarily used with **closures**, but the underlying idea is broader: a type implementing one of these traits can be invoked using function-call syntax:
+
+```rust
+value(arg1, arg2)
+```
+
+### 1. `Fn`
+
+`Fn` means: **The callable can be called repeatedly without mutating or consuming its captured environment.**
+
+Signature:
+
+```rust
+Fn(Args) -> ReturnType
+```
+
+For example:
+
+```rust
+F: Fn(i32, i32) -> i32
+```
+
+means:
+
+```text
+F
+ └── can be called with (i32, i32)
+ └── returns i32
+```
+
+Example:
+
+```rust
+let add = |a, b| a + b;
+
+add(10, 20);
+add(30, 40);
+```
+
+The closure doesn't modify or consume anything from its environment, so it can implement `Fn`.
+
+### 2. `FnMut`
+
+`FnMut` means: **The callable may mutate its captured environment, so calling it requires mutable access.**
+
+Signature:
+
+```rust
+FnMut(Args) -> ReturnType
+```
+
+Example:
+
+```rust
+let mut count = 0;
+
+let mut increment = || {
+    count += 1;
+};
+
+increment();
+increment();
+```
+
+The closure modifies `count`, which it captured from the surrounding environment.  
+
+Therefore it requires mutable access to the closure:
+
+```rust
+let mut increment = || {
+    count += 1;
+};
+
+increment();
+```
+
+Notice:
+
+```rust
+let mut increment
+```
+
+The closure itself must be mutable because calling it mutably changes its captured state.
+
+### 3. `FnOnce`
+
+`FnOnce` means: **The callable may consume something from its captured environment, so it can potentially be called only once.**
+
+Signature:
+
+```rust
+FnOnce(Args) -> ReturnType
+```
+
+Example:
+
+```rust
+let message = String::from("Hello");
+
+let consume = || {
+    drop(message);
+};
+
+consume();
+```
+
+The closure **moves/consumes** `message`.
+
+After that, `message` is gone, and the closure cannot necessarily be called again.
+
+### The relationship between them
+
+The important part is that these traits form a hierarchy:
+
+```text
+FnOnce
+  ↑
+ FnMut
+  ↑
+  Fn
+```
+
+More precisely:
+
+```text
+Fn: FnMut: FnOnce
+```
+
+So:
+
+```text
+Every Fn closure is also FnMut and FnOnce
+Every FnMut closure is also FnOnce
+But not every FnOnce closure is FnMut
+```
+
+Think of the capabilities as becoming progressively more restrictive:
+
+```text
+Fn
+│
+├── Can call repeatedly
+├── Doesn't mutate captured environment
+└── Doesn't consume captured environment
+
+FnMut
+│
+├── Can call repeatedly
+├── May mutate captured environment
+└── Doesn't consume captured environment
+
+FnOnce
+│
+├── Can call at least once
+└── May consume captured environment
+```
+
+### One important correction to the mental model
+
+`Fn`, `FnMut`, and `FnOnce` **do not describe the arguments or return type by themselves**.
+
+This:
+
+```rust
+Fn(i32, i32) -> i32
+```
+
+has two pieces:
+
+```text
+Fn
+│
+└── callable behavior
+
+(i32, i32) -> i32
+│              │
+│              └── return type
+└── arguments
+```
+
+So:
+
+```rust
+F: Fn(i32, i32) -> i32
+```
+
+means:
+
+> `F` is a callable type that can be invoked with two `i32` arguments and returns an `i32`.
 
 ---

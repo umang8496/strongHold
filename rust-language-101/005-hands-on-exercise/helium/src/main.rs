@@ -283,6 +283,443 @@
 
 
 
-fn main() {
-    println!("Hello, world!");
-}
+
+
+
+
+
+// fn double_if_present(value: Option<i32>) -> Option<i32> {
+//     if value.is_some() {
+//         return match value {
+//             Some(number) => Option::Some(2 * number),
+//             None => None
+//         }
+//     } else {
+//         return Option::None;
+//     }
+// }
+
+// fn main() {
+//     let option_10: Option<i32> = Option::Some(10);
+//     println!("{:?}", double_if_present(option_10));
+//     let option_25: Option<i32> = Option::Some(25);
+//     println!("{:?}", double_if_present(option_25));
+// }
+
+
+
+
+
+
+
+
+
+
+// fn find_name(names: &[String], target: &str) -> Option<String> {
+//     for name in names {
+//         if name == target {
+//             return Option::Some(name.clone());
+//         }
+//     }
+//     Option::None
+// }
+
+// fn main() {
+//     let names = vec![
+//         String::from("Alice"),
+//         String::from("Bob"),
+//         String::from("Charlie"),
+//         String::from("David"),
+//     ];
+
+//     println!("{:?}", &find_name(&names, "Charlie"));
+//     println!("{:?}", &find_name(&names, "Eve"));
+// }
+
+
+
+
+
+
+
+
+
+// struct User {
+//     id: i32,
+//     name: String,
+//     age: i32,
+// }
+
+// impl User {
+//     fn new(id: i32, name: String, age: i32) -> Self {
+//         User { id, name, age }
+//     }
+
+//     fn is_adult(&self) -> bool {
+//         self.age >= 18
+//     }
+// }
+
+// fn main() {
+//     let user = User::new(1, String::from("Umang"), 20);
+//     println!("User: {}", user.name);
+//     println!("Adult: {}", user.is_adult());
+// }
+
+
+
+
+
+
+
+
+
+
+// enum Shape {
+//     Circle(f64),
+//     Rectangle(f64, f64),
+// }
+
+
+// fn area(shape: &Shape) -> f64 {
+//     match shape {
+//         Shape::Circle(radius) => std::f64::consts::PI * radius * radius,
+//         Shape::Rectangle(width, height) => width * height,
+//     }
+// }
+
+// fn main() {
+//     let circle = Shape::Circle(10.0);
+//     let rectangle = Shape::Rectangle(10.0, 5.0);
+
+//     println!("Circle area: {}", area(&circle));
+//     println!("Rectangle area: {}", area(&rectangle));
+// }
+
+
+
+
+
+
+
+
+
+
+// struct Circle {
+//     radius: f64,
+// }
+
+// struct Rectangle {
+//     length: f64,
+//     width: f64,
+// }
+
+// trait Area {
+//     fn area(&self) -> f64;
+// }
+
+// impl Area for Circle {
+//     fn area(&self) -> f64 {
+//         std::f64::consts::PI * self.radius * self.radius
+//     }
+// }
+
+// impl Area for Rectangle {
+//     fn area(&self) -> f64 {
+//         self.length * self.width
+//     }
+// }
+
+// fn main() {
+//     let circle = Circle { radius: 10.0 };
+//     let rectangle = Rectangle {
+//         length: 10.0,
+//         width: 5.0,
+//     };
+
+//     println!("Circle: {}", circle.area());
+//     println!("Rectangle: {}", rectangle.area());
+// }
+
+
+
+
+
+
+
+
+
+// trait Area {
+//     fn area(&self) -> f64;
+// }
+
+// struct Circle {
+//     radius: f64,
+// }
+
+// impl Area for Circle {
+//     fn area(&self) -> f64 {
+//         std::f64::consts::PI * self.radius * self.radius
+//     }
+// }
+
+// struct Rectangle {
+//     length: f64,
+//     breadth: f64,
+// }
+
+// impl Area for Rectangle {
+//     fn area(&self) -> f64 {
+//         self.length * self.breadth
+//     }
+// }
+
+// fn print_area<T: Area>(shape: &T) {
+//     let calculated_area: f64 = shape.area();
+//     println!("Area: {}", calculated_area);
+// }
+
+// fn main() {
+//     let circle = Circle { radius: 10.0 };
+//     let rectangle = Rectangle {
+//         length: 10.0,
+//         breadth: 5.0,
+//     };
+//     print_area(&circle);
+//     print_area(&rectangle);
+// }
+
+
+
+
+
+
+
+
+
+
+// trait Area {
+//     fn area(&self) -> f64;
+// }
+
+// struct Circle {
+//     radius: f64,
+// }
+
+// impl Area for Circle {
+//     fn area(&self) -> f64 {
+//         std::f64::consts::PI * self.radius * self.radius
+//     }
+// }
+
+// impl std::fmt::Display for Circle {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         write!(f, "Circle {{ radius: {} }}", self.radius)
+//     }
+// }
+
+// struct Rectangle {
+//     length: f64,
+//     breadth: f64,
+// }
+
+// impl Area for Rectangle {
+//     fn area(&self) -> f64 {
+//         self.length * self.breadth
+//     }
+// }
+
+// impl std::fmt::Display for Rectangle {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         write!(f, "Rectangle {{ length: {}, breadth: {} }}", self.length, self.breadth)
+//     }
+// }
+
+// fn describe<T: Area + std::fmt::Display>(shape: &T) {
+//     println!("Area: {}", &shape.area());
+//     println!("Shape: {}", &shape);
+// }
+
+// fn main() {
+//     let circle = Circle { radius: 10.0 };
+//     let rectangle = Rectangle {
+//         length: 10.0,
+//         breadth: 5.0,
+//     };
+//     describe(&circle);
+//     describe(&rectangle);
+// }
+
+
+
+
+
+
+
+
+
+
+// trait Area {
+//     fn area(&self) -> f64;
+// }
+
+// #[derive(Debug)]
+// struct Circle {
+//     radius: f64,
+// }
+
+// impl Area for Circle {
+//     fn area(&self) -> f64 {
+//         std::f64::consts::PI * self.radius * self.radius
+//     }
+// }
+
+// #[derive(Debug)]
+// struct Rectangle {
+//     length: f64,
+//     breadth: f64,
+// }
+
+// impl Area for Rectangle {
+//     fn area(&self) -> f64 {
+//         self.length * self.breadth
+//     }
+// }
+
+// fn describe(shape: &(impl Area + std::fmt::Debug)) {
+//     println!("Area: {}", &shape.area());
+//     println!("Shape: {:?}", &shape);
+// }
+
+// fn main() {
+//     let circle = Circle { radius: 10.0 };
+//     let rectangle = Rectangle {
+//         length: 10.0,
+//         breadth: 5.0,
+//     };
+//     describe(&circle);
+//     describe(&rectangle);
+// }
+
+
+
+
+
+
+
+
+
+// trait Area {
+//     fn area(&self) -> f64;
+// }
+
+// #[derive(Debug)]
+// struct Circle {
+//     radius: f64,
+// }
+
+// impl Area for Circle {
+//     fn area(&self) -> f64 {
+//         std::f64::consts::PI * self.radius * self.radius
+//     }
+// }
+
+// #[derive(Debug)]
+// struct Rectangle {
+//     length: f64,
+//     breadth: f64,
+// }
+
+// impl Area for Rectangle {
+//     fn area(&self) -> f64 {
+//         self.length * self.breadth
+//     }
+// }
+
+// // This one works as well
+// // fn same_area<T: Area, V: Area>(a: &T, b: &V) -> bool {
+// //     a.area() == b.area()
+// // }
+
+// fn same_area(a: &impl Area, b: &impl Area) -> bool {
+//     a.area() == b.area()
+// }
+
+// fn main() {
+//     let circle1 = Circle { radius: 10.0 };
+//     let circle2 = Circle { radius: 10.0 };
+//     println!("{}", same_area(&circle1, &circle2));    // true
+
+//     let rectangle = Rectangle {
+//         length: 10.0,
+//         breadth: 5.0,
+//     };
+
+//     println!("{}", same_area(&rectangle, &circle2));    // false
+// }
+
+
+
+
+
+
+
+
+
+
+// trait Area {
+//     fn area(&self) -> f64;
+// }
+
+// #[derive(Debug)]
+// struct Circle {
+//     radius: f64,
+// }
+
+// impl Area for Circle {
+//     fn area(&self) -> f64 {
+//         std::f64::consts::PI * self.radius * self.radius
+//     }
+// }
+
+// #[derive(Debug)]
+// struct Rectangle {
+//     length: f64,
+//     breadth: f64,
+// }
+
+// impl Area for Rectangle {
+//     fn area(&self) -> f64 {
+//         self.length * self.breadth
+//     }
+// }
+
+// fn print_areas(shapes: &Vec<&dyn Area>) {
+//     for shape in shapes {
+//         println!("Area: {}", shape.area());
+//     } 
+// }
+
+// fn main() {
+//     let circle = Circle { radius: 10.0 };
+//     let rectangle = Rectangle {
+//         length: 10.0,
+//         breadth: 5.0,
+//     };
+
+//     let shapes: Vec<&dyn Area> = vec![
+//         &circle,
+//         &rectangle,
+//     ];
+
+//     print_areas(&shapes);
+// }
+
+
+
+
+
+
+
+
+
