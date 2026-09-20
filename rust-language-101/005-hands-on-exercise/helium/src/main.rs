@@ -723,3 +723,171 @@
 
 
 
+// fn apply_operation<F>(a: i32, b: i32, operation: F) -> i32 
+// where 
+//     F: Fn(i32, i32) -> i32,
+// {
+//     operation(a, b)
+// }
+
+// fn main() {
+//     let add = |a: i32, b: i32| a + b;
+//     let multiply = |a: i32, b: i32| a * b;
+
+//     println!("{}", apply_operation(10, 20, add));
+//     println!("{}", apply_operation(10, 20, multiply));
+// }
+
+
+
+
+
+
+
+
+
+
+// fn execute_fn<F>(operation: F)
+// where
+//     F: Fn()
+// {
+//     operation();
+// }
+
+// fn execute_fn_mut<F>(mut operation: F)
+// where
+//     F: FnMut()
+// {
+//     operation();
+// }
+
+// fn execute_fn_once<F>(operation: F)
+// where
+//     F: FnOnce()
+// {
+//     operation();
+// }
+
+// fn main() {
+//     // case 01:
+//     let message: String = String::from("Hello");
+
+//     let print_message = || {
+//         println!("{}", message);
+//     };
+
+//     execute_fn(print_message);
+
+//     // case 02:
+//     let mut count = 0;
+
+//     let increment = || {
+//         count += 1;
+//         println!("{}", count);
+//     };
+
+//     execute_fn_mut(increment);
+
+//     // case 03:
+//     let message = String::from("Hello");
+
+//     let consume_message = || {
+//         println!("Dropping: {}", message);
+//         drop(message);
+//     };
+
+//     execute_fn_once(consume_message);
+// }
+
+
+
+
+
+
+
+
+
+
+// fn execute<F>(operation: F)
+// where
+//     F: Fn(),
+// {
+//     operation();
+// }
+
+// fn main() {
+//     // case 01:
+//     let name = String::from("Rust (borrowed)");
+//     let print_name = || {
+//         println!("{}", name);
+//     };
+//     execute(print_name);
+//     // "name" is still usable as it was initially borrowed by "execute()"
+//     // "exceute()" implements "Fn()"
+//     println!("Still usable: {}", name);
+
+//     // case 02:
+//     let mut count = 0;
+//     let mut increment = || {
+//         count += 1;
+//     };
+//     // here "increment" implements the "FnMut" trait
+//     increment();
+//     increment();
+//     println!("Count: {}", count);
+
+//     // case 03:
+//     let consumable_name = String::from("Rust (moved)");
+//     let consume_name = move || {
+//         println!("{}", consumable_name);
+//     };
+//     consume_name();
+//     // the following line cannot be compiled because of the "move" keyboard
+//     // here "consume_name" still implements "Fn" trait
+//     // println!("Name: {}", consumable_name);
+// }
+
+
+
+
+
+
+
+
+
+
+// fn double_numbers(numbers: &[i32]) -> Vec<i32> {
+//     let doubled: Vec<i32> = numbers.iter().map(|number| { number * 2 }).collect();
+//     doubled
+// }
+
+// fn main() {
+//     let numbers = vec![1, 2, 3, 4, 5];
+//     let result = double_numbers(&numbers);
+//     println!("Initial Vec: {:?}", numbers);
+//     println!("Final Vec: {:?}", result);
+// }
+
+
+
+
+
+
+
+
+
+
+// fn even_squares(numbers: &[i32]) -> Vec<i32> {
+//     numbers
+//         .iter()
+//         .filter(|num| { *num % 2 == 0 })
+//         .map(|num| { num * num })
+//         .collect::<Vec<i32>>()
+// }
+
+// fn main() {
+//     let numbers: Vec<i32> = vec![1, 2, 3, 4, 5, 6];
+//     let result: Vec<i32> = even_squares(&numbers);
+//     println!("Initial Vec: {:?}", numbers);
+//     println!("Final Vec: {:?}", result);
+// }

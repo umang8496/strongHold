@@ -33,6 +33,11 @@ This project helps get the developer familiar with the hands-on rust coding.
 - [Exercise 018 (Generic function impl Trait)](#exercise-018)
 - [Exercise 019 (Generic Type + Multiple Parameters)](#exercise-019)
 - [Exercise 020 (Trait Objects / Dynamic Dispatch)](#exercise-020)
+- [Exercise 021 (Closures Intro)](#exercise-021)
+- [Exercise 022 (Closure Capture & `Fn` vs `FnMut` vs `FnOnce`)](#exercise-022)
+- [Exercise 023 (Closure Capture + Ownership)](#exercise-023)
+- [Exercise 024 (Closures + Iterators)](#exercise-024)
+- [Exercise 025 (filter + map)](#exercise-025)
 
 ---
 
@@ -1230,7 +1235,7 @@ fn main() {
 - **Static dispatch**: Generic functions such as: `fn f<T: Area>(shape: &T)` are resolved at compile time through **monomorphization**.
 
 - **Dynamic dispatch: `dyn Trait`**:  
-  - `&dyn Area` introduces **trait objects and dynamic dispatch**, 
+  - `&dyn Area` introduces **trait objects and dynamic dispatch**,
   - allowing different concrete types such as `Circle` and `Rectangle` to be handled through the same interface at runtime.
 
 [Go to the Top](#table-of-content)
@@ -1358,6 +1363,394 @@ This makes the function usable with both a `Vec` and an `array/slice`, rather th
 
 - With generics: `fn print_areas<T: Area>(shapes: &[T])`, `T` represents one concrete type.
 - With: `fn print_areas(shapes: &Vec<&dyn Area>)` each element can refer to a different concrete type, as long as it implements Area.
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 021
+
+- Given:
+
+    ```rust
+        fn apply_operation(a: i32, b: i32, operation: ???) -> i32 {
+            operation(a, b)
+        }
+    ```
+
+- Complete the functioon so that these work:
+
+    ```rust
+        let add = |a, b| a + b;
+        let multiply = |a, b| a * b;
+
+        println!("{}", apply_operation(10, 20, add));
+        println!("{}", apply_operation(10, 20, multiply));
+    ```
+
+- Constraints:
+  - Use a closure as the `operation` parameter.
+  - Don't use `traits` explicitly.
+  - Don't use `dyn`.
+  - Don't use **generics** yet.
+
+### Response
+
+```rust
+fn apply_operation<F>(a: i32, b: i32, operation: F) -> i32 
+where 
+    F: Fn(i32, i32) -> i32,
+{
+    operation(a, b)
+}
+
+fn main() {
+    let add = |a: i32, b: i32| a + b;
+    let multiply = |a: i32, b: i32| a * b;
+
+    println!("{}", apply_operation(10, 20, add));
+    println!("{}", apply_operation(10, 20, multiply));
+}
+```
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 022
+
+Now let's make the callable traits concrete.
+
+- Consider:
+
+    ```rust
+        fn execute<F>(operation: F)
+        where
+            F: ???,
+        {
+            operation();
+        }
+    ```
+
+- Your task is to determine the correct trait bound for each of the following case.
+- Case 1:
+
+    ```rust
+        let message = String::from("Hello");
+
+        let print_message = || {
+            println!("{}", message);
+        };
+    ```
+
+- Case 2:
+
+    ```rust
+        let mut count = 0;
+
+        let increment = || {
+            count += 1;
+        };
+    ```
+
+- Case 3:
+
+    ```rust
+        let message = String::from("Hello");
+
+        let consume_message = || {
+            drop(message);
+        };
+    ```
+
+- For each closure, determine whether it implements: `Fn`, `FnMut` and `FnOnce`.
+- Then write three functions:
+
+    ```rust
+        fn execute_fn<F>(operation: F)
+        where
+            F: ???
+        {
+            operation();
+        }
+    ```
+
+    ```rust
+        fn execute_fn_mut<F>(operation: F)
+        where
+            F: ???
+        {
+            operation();
+        }
+    ```
+
+    ```rust
+        fn execute_fn_once<F>(operation: F)
+        where
+            F: ???
+        {
+            operation();
+        }
+    ```
+
+- Constraints:
+  - Don't use `Box`.
+  - Don't use `traits` explicitly.
+  - Don't use `dyn`.
+  - Use **generics** yet.
+
+### Response
+
+```rust
+fn execute_fn<F>(operation: F)
+where
+    F: Fn()
+{
+    operation();
+}
+
+fn execute_fn_mut<F>(mut operation: F)
+where
+    F: FnMut()
+{
+    operation();
+}
+
+fn execute_fn_once<F>(operation: F)
+where
+    F: FnOnce()
+{
+    operation();
+}
+
+fn main() {
+    // case 01:
+    let message: String = String::from("Hello");
+
+    let print_message = || {
+        println!("{}", message);
+    };
+
+    execute_fn(print_message);
+
+    // case 02:
+    let mut count = 0;
+
+    let increment = || {
+        count += 1;
+        println!("{}", count);
+    };
+
+    execute_fn_mut(increment);
+
+    // case 03:
+    let message = String::from("Hello");
+
+    let consume_message = || {
+        println!("Dropping: {}", message);
+        drop(message);
+    };
+
+    execute_fn_once(consume_message);
+}
+```
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 023
+
+- Consider:
+
+    ```rust
+        fn execute<F>(operation: F)
+        where
+            F: Fn(),
+        {
+            operation();
+        }
+    ```
+
+- Now complete the following three cases.
+- Case 1 - Borrow:
+
+    ```rust
+        let name = String::from("Rust");
+
+        let print_name = || {
+            println!("{}", name);
+        };
+
+        execute(print_name);
+
+        println!("Still usable: {}", name);
+    ```
+
+    Question: Why is `name` still usable after calling `execute()`?
+
+- Case 2 - Mutable Borrow:
+
+    ```rust
+        let mut count = 0;
+
+        let increment = || {
+            count += 1;
+        };
+
+        increment();
+        increment();
+
+        println!("Count: {}", count);
+    ```
+
+    Question: What trait does `increment` implement, and why?
+
+- Case 3 - Move:
+
+    ```rust
+        let name = String::from("Rust");
+
+        let consume_name = move || {
+            println!("{}", name);
+        };
+
+        consume_name();
+
+        println!("Name: {}", name);
+    ```
+
+    Question: Does this compile?
+
+The important concept here is:
+
+> A closure doesn't always own what it captures.  
+> Rust determines the capture mode based on how the captured variable is used — unless move forces ownership into the closure.
+
+### Response
+
+```rust
+fn execute<F>(operation: F)
+where
+    F: Fn(),
+{
+    operation();
+}
+
+fn main() {
+    // case 01:
+    let name = String::from("Rust (borrowed)");
+    let print_name = || {
+        println!("{}", name);
+    };
+    execute(print_name);
+    // "name" is still usable as it was initially borrowed by "execute()"
+    // "exceute()" implements "Fn()"
+    println!("Still usable: {}", name);
+
+    // case 02:
+    let mut count = 0;
+    let mut increment = || {
+        count += 1;
+    };
+    // here "increment" implements the "FnMut" trait
+    increment();
+    increment();
+    println!("Count: {}", count);
+
+    // case 03:
+    let consumable_name = String::from("Rust (moved)");
+    let consume_name = move || {
+        println!("{}", consumable_name);
+    };
+    consume_name();
+    // the following line cannot be compiled because of the "move" keyboard
+    // here "consume_name" still implements "Fn" trait
+    // println!("Name: {}", consumable_name);
+}
+```
+
+### Learning
+
+| Closure behavior                  | Typical trait     |
+| --------------------------------- | ----------------- |
+| Captures by reference, only reads | `Fn`              |
+| Mutably accesses captured state   | `FnMut`           |
+| Consumes captured value           | `FnOnce`          |
+| `move` + only reads owned value   | Can still be `Fn` |
+| `move` + mutates owned value      | Can be `FnMut`    |
+| `move` + consumes owned value     | `FnOnce`          |
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 024
+
+Now we'll connect closures to **iterators**, which is where you'll start seeing `Fn`/`FnMut` constantly in real Rust code.  
+
+We'll start with a simple iterator transformation rather than throwing several iterator methods at you at once.  
+
+- Implement: `fn double_numbers(numbers: &[i32]) -> Vec<i32> {...}`
+- Given:
+
+    ```rust
+        let numbers = vec![1, 2, 3, 4, 5];
+        let result = double_numbers(&numbers);
+        println!("{:?}", result);
+    ```
+
+- Constraints:
+  - Use: `.iter()`, `.map()`, `.collect()`
+  - Do not use: a `for` loop, or a manually created result `Vec` or `.for_each()`.
+
+### Response
+
+```rust
+fn double_numbers(numbers: &[i32]) -> Vec<i32> {
+    let doubled: Vec<i32> = numbers.iter().map(|number| { number * 2 }).collect();
+    // another way of writing the above line
+    // let doubled = numbers.iter().map(|number| number * 2).collect::<Vec<i32>>();
+    doubled
+}
+
+fn main() {
+    let numbers = vec![1, 2, 3, 4, 5];
+    let result = double_numbers(&numbers);
+    println!("Initial Vec: {:?}", numbers);
+    println!("Final Vec: {:?}", result);
+}
+```
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 025
+
+Now let's combine two iterator transformations.
+
+- Implement: `fn even_squares(numbers: &[i32]) -> Vec<i32>`
+- For: `vec![1, 2, 3, 4, 5, 6]` the result should be: `[4, 16, 36]`.
+
+### Response
+
+```rust
+fn even_squares(numbers: &[i32]) -> Vec<i32> {
+    numbers
+        .iter()
+        .filter(|num| { *num % 2 == 0 })
+        .map(|num| { num * num })
+        .collect::<Vec<i32>>()
+}
+
+fn main() {
+    let numbers: Vec<i32> = vec![1, 2, 3, 4, 5, 6];
+    let result: Vec<i32> = even_squares(&numbers);
+    println!("Initial Vec: {:?}", numbers);
+    println!("Final Vec: {:?}", result);
+}
+```
 
 [Go to the Top](#table-of-content)
 
