@@ -891,3 +891,41 @@
 //     println!("Initial Vec: {:?}", numbers);
 //     println!("Final Vec: {:?}", result);
 // }
+
+
+
+
+
+
+
+
+
+
+// fn sum_of_squares(numbers: &[i32]) -> i32 {
+//     numbers.iter().fold(0, |acc, item| { acc + item * item})
+// }
+
+// fn main() {
+//     let numbers: Vec<i32> = vec![1, 2, 3, 4, 5];
+//     let result: i32 = sum_of_squares(&numbers);
+//     println!("Result: {}", result);
+// }
+
+
+
+
+
+
+
+
+// fn first_greater_than(numbers: &[i32], target: i32) -> Option<i32> {
+//     let result = numbers.iter().find(|&&num| { num > target }).copied();
+//     return result;
+// }
+
+// fn main() {
+//     let numbers: Vec<i32> = vec![10, 20, 30, 40, 50];
+//     println!("{:?}", first_greater_than(&numbers, 25));    // Some(30)
+//     println!("{:?}", first_greater_than(&numbers, 40));    // Some(50)
+//     println!("{:?}", first_greater_than(&numbers, 100));   // None
+// }

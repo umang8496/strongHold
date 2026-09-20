@@ -38,6 +38,8 @@ This project helps get the developer familiar with the hands-on rust coding.
 - [Exercise 023 (Closure Capture + Ownership)](#exercise-023)
 - [Exercise 024 (Closures + Iterators)](#exercise-024)
 - [Exercise 025 (filter + map)](#exercise-025)
+- [Exercise 026 (`fold()`)](#exercise-026)
+- [Exercise 027 (`find()`, `any()`, and `position()`)](#exercise-027)
 
 ---
 
@@ -1751,6 +1753,126 @@ fn main() {
     println!("Final Vec: {:?}", result);
 }
 ```
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 026
+
+- Implement: `fn sum_of_squares(numbers: &[i32]) -> i32`
+- For: `let numbers = vec![1, 2, 3, 4, 5];` the result should be: `55`.
+
+### Response
+
+```rust
+fn sum_of_squares(numbers: &[i32]) -> i32 {
+    numbers.iter().fold(0, |acc, item| { acc + item * item})
+}
+
+fn main() {
+    let numbers: Vec<i32> = vec![1, 2, 3, 4, 5];
+    let result: i32 = sum_of_squares(&numbers);
+    println!("Result: {}", result);
+}
+```
+
+### `fold()` in Rust
+
+`fold()` is an iterator operation that reduces multiple elements into a single final value.  
+Its conceptual signature is:
+
+```rust
+fn fold<B, F>(init: B, f: F) -> B
+where
+    F: FnMut(B, Self::Item) -> B
+```
+
+Don't worry about memorizing the exact generic signature yet. The important structure is: `fold(initial_value, closure)`.  
+The closure receives: `accumulator + current_item` and must return the next accumulator.
+This closure is effectively `FnMut` because the closure conceptually updates the accumulator across iterations.
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 027
+
+We've learned how to transform and reduce iterators.  
+Now let's look at operations that search an iterator.  
+
+- Implement: `fn first_greater_than(numbers: &[i32], target: i32) -> Option<i32>`
+- Given: `let numbers = vec![10, 20, 30, 40, 50];`.
+- These should produce:
+
+    ```text
+        first_greater_than(&numbers, 25) → Some(30)
+        first_greater_than(&numbers, 40) → Some(50)
+        first_greater_than(&numbers, 100) → None
+    ```
+
+### Response
+
+```rust
+fn first_greater_than(numbers: &[i32], target: i32) -> Option<i32> {
+    let result = numbers.iter().find(|&&num| { num > target }).copied();
+    return result;
+}
+
+fn main() {
+    let numbers: Vec<i32> = vec![10, 20, 30, 40, 50];
+    println!("{:?}", first_greater_than(&numbers, 25));    // Some(30)
+    println!("{:?}", first_greater_than(&numbers, 40));    // Some(50)
+    println!("{:?}", first_greater_than(&numbers, 100));   // None
+}
+```
+
+### Learning
+
+- The `Iterator::find` method takes a single argument: `a closure that returns a boolean (true or false)`.
+  - It loops through the iterator elements one by one and applies your closure to each element.
+  - The moment the closure returns `true`, `find` short-circuits (stops looping immediately) and returns that element inside `Some`.
+  - If the loop finishes and no elements match the condition, it returns `None`.
+- Because it might not find a match, the return type of find is always an `Option<T>`.
+
+- `find()`
+  - Searches an iterator for the **first element** satisfying a predicate.
+  - Signature conceptually: `find<F>(&mut self, predicate: F) -> Option<Self::Item>`.
+  - Predicate returns `bool`: `|item| -> bool`.
+  - Returns: `Some(item)` → first matching element or `None` → no match`.
+  - With `.iter()` over `&[i32]`:
+
+    ```text
+    iter() → Item = &i32
+    find() → Option<&i32>
+    ```
+
+  - The predicate receives a reference to the iterator item, hence `&&i32` in our example.
+
+- `copied()`
+  - Converts references to their **copied values** when the underlying type implements `Copy`.
+  - Commonly used to convert: `Option<&T> → Option<T>`
+  - Example:
+
+    ```rust
+    Some(&30).copied()
+    // Some(30)
+    ```
+
+  - `i32` implements `Copy`, so this works:
+
+    ```rust
+    Option<&i32>.copied() → Option<i32>
+    ```
+
+  - It **does not clone** the object.
+  - For non-`Copy` types where you want a duplicate, use `.cloned()` instead.
+  - Mental model:
+
+    ```text
+    find()   → finds a reference
+    copied() → copies the referenced value
+    ```
 
 [Go to the Top](#table-of-content)
 
