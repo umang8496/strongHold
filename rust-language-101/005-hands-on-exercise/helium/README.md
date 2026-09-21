@@ -1,4 +1,5 @@
 <!-- markdownlint-disable MD001 -->
+<!-- markdownlint-disable MD012 -->
 <!-- markdownlint-disable MD024 -->
 <!-- markdownlint-disable MD025 -->
 <!-- markdownlint-disable MD026 -->
@@ -40,6 +41,15 @@ This project helps get the developer familiar with the hands-on rust coding.
 - [Exercise 025 (filter + map)](#exercise-025)
 - [Exercise 026 (`fold()`)](#exercise-026)
 - [Exercise 027 (`find()`, `any()`, and `position()`)](#exercise-027)
+- [Exercise 028 (`any()` and `all()`)](#exercise-028)
+- [Exercise 029 (`filter()` + `map()` + `collect()` with `String`)](#exercise-029)
+- [Exercise 030 (`enumerate()` + `filter()`)](#exercise-030)
+- [Exercise 031 (`flat_map()`)](#exercise-031)
+- [Exercise 032 (`filter_map()`)](#exercise-032)
+- [Exercise 032 (`filter_map()`)](#exercise-032)
+- [Exercise 033 (`zip()`)](#exercise-033)
+- [Exercise 034 (`partition()`)](#exercise-034)
+- [Exercise 035 (`fold()` with a custom result)](#exercise-035)
 
 ---
 
@@ -1877,3 +1887,497 @@ fn main() {
 [Go to the Top](#table-of-content)
 
 ---
+
+## Exercise 028
+
+- Implement: `fn contains_negative(numbers: &[i32]) -> bool`.
+- It should return true if at least one number is negative.
+- And implement: `fn all_positive(numbers: &[i32]) -> bool`.
+- It should return true only if every number is positive.
+
+### Response
+
+```rust
+// It should return true if at least one number is negative
+fn contains_negative(numbers: &[i32]) -> bool {
+    numbers.iter().any(|&num| {num < 0})
+}
+
+// It should return true only if every number is positive
+fn all_positive(numbers: &[i32]) -> bool {
+    numbers.iter().all(|&num| {num > 0})
+}
+
+fn main() {
+    let a: Vec<i32> = vec![1, 2, 3, 4];
+    let b: Vec<i32> = vec![1, -2, 3, 4];
+
+    println!("{}", contains_negative(&a));
+    println!("{}", contains_negative(&b));
+
+    println!("{}", all_positive(&a));
+    println!("{}", all_positive(&b));
+}
+```
+
+#### `any()` in Rust
+
+```rust
+fn any<F>(&mut self, f: F) -> bool
+where
+    Self: Sized,
+    F: FnMut(Self::Item) -> bool,
+```
+
+- `any()` takes a closure that returns `true` or `false`.  
+- It applies this closure to each element of the iterator, and if any of them return true, then so does any().  
+- If they all return `false`, it returns `false`.
+
+- `any()` is short-circuiting; in other words, it will stop processing as soon as it finds a `true`, given that no matter what else happens, the result will also be `true`.
+
+- An empty iterator returns `false`.
+
+#### `all()` in Rust
+
+```rust
+fn all<F>(&mut self, f: F) -> bool
+where
+    Self: Sized,
+    F: FnMut(Self::Item) -> bool,
+```
+
+- `all()` takes a closure that returns `true` or `false`.  
+- It applies this closure to each element of the iterator, and if all of them return `true`, then so does `all()`.  
+- If any of them return `false`, it returns `false`.
+
+- `all()` is short-circuiting; in other words, it will stop processing as soon as it finds a `false`, given that no matter what else happens, the result will also be `false`.
+
+- An empty iterator returns `true`.
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 029
+
+- Implement: `fn long_names(names: &[String]) -> Vec<String>`.
+- Given:
+
+    ```rust
+        let names = vec![
+            String::from("Raj"),
+            String::from("Alexander"),
+            String::from("John"),
+            String::from("Christopher"),
+        ];
+    ```
+
+- Return names whose length is greater than 4.
+
+### Response
+
+```rust
+fn long_names(names: &[String]) -> Vec<String> {
+    let result = names
+        .iter()
+        .filter(|&name| { name.len() > 4 })
+        .map(|name| { name.to_string() })
+        .collect();
+    result
+}
+
+fn main() {
+    let names = vec![
+        String::from("Raj"),
+        String::from("Alexander"),
+        String::from("John"),
+        String::from("Christopher"),
+    ];
+
+    println!("{:?}", long_names(&names));
+}
+```
+
+### What happened in this code
+
+- **Input:** `&[String]` — the function only borrows the original strings.
+- **`.iter()`** — produces `&String` references; nothing is moved.
+- **`.filter()`** — keeps only strings whose length is greater than `4`.
+- **`.map()`** — converts each remaining `&String` into a new owned `String` using `to_string()`.
+- **`.collect()`** — gathers those owned `String`s into a `Vec<String>`.
+- **Original vector remains usable** because we never moved anything out of it.
+- Overall pipeline:
+
+    ```text
+        &[String]
+            ↓
+        iter()
+            ↓
+        &String
+            ↓
+        filter()
+            ↓
+        &String
+            ↓
+        map()
+            ↓
+        String
+            ↓
+        collect()
+            ↓
+        Vec<String>
+    ```
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 030
+
+- Implement: `fn find_even_index(numbers: &[i32]) -> Option<usize>`.
+- It should return the index of the first even number.
+
+### Response
+
+```rust
+fn find_even_index(numbers: &[i32]) -> Option<usize> {
+    numbers.iter().enumerate().find_map(|(index, &num)| {
+        if num % 2 == 0 {
+            Some(index)
+        } else {
+            None
+        }
+    })
+}
+
+fn main() {
+    let numbers: Vec<i32> = vec![11, 7, 9, 14, 21];
+    let first_even_number_index: Option<usize> = find_even_index(&numbers);
+    match first_even_number_index {
+        Some(index) => println!("Position is {}", index),
+        None => println!("No even number found"),
+    }
+}
+```
+
+Alternatively, we can have the following implementations too.
+
+```rust
+fn find_even_index(numbers: &[i32]) -> Option<usize> {
+    numbers
+        .iter()
+        .enumerate()
+        .find(|&(_, &num)| num % 2 == 0)
+        .map(|(index, _)| index)
+}
+```
+
+Or
+
+```rust
+fn find_even_index(numbers: &[i32]) -> Option<usize> {
+    numbers.iter().position(|&num| num % 2 == 0)
+}
+```
+
+### Learning
+
+- **`find()`** → returns the **first matching element** → `Option<Item>`
+- **`find_map()`** → returns the **first successful transformed result** → `Option<T>`
+- **`position()`** → returns the **index of the first match** → `Option<usize>`
+
+- `enumerate()` takes an iterator and adds an index to each item.
+- `enumerate() → Iterator<(usize, Item)>`
+- For: `numbers.iter()` where `Item = &i32`: `iter() returns &i32` and `enumerate() returns a tuple (usize, &i32)`.
+- And the index is always a `usize`.
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 031
+
+- Implement: `fn flatten_numbers(numbers: &[Vec<i32>]) -> Vec<i32>`
+- Given:
+
+    ```rust
+        let numbers = vec![
+            vec![1, 2],
+            vec![3, 4, 5],
+            vec![6],
+        ];
+    ```
+
+- Expected result: `[1, 2, 3, 4, 5, 6]`
+
+### Response
+
+```rust
+fn flatten_numbers(numbers: &[Vec<i32>]) -> Vec<i32> {
+    numbers.iter().flat_map(|v| v.iter().cloned()).collect()
+}
+
+fn main() {
+    let numbers: Vec<Vec<i32>> = vec![
+        vec![1, 2],
+        vec![3, 4, 5],
+        vec![6],
+    ];
+    println!("Flatten Number: {:?}", flatten_numbers(&numbers));
+}
+```
+
+### Learning
+
+- `numbers.iter()` → iterates over each inner `Vec<i32>` as `&Vec<i32>`.
+- `flat_map(|v| ...)` → for each inner vector, produces an iterator and flattens all those iterators into one.
+- `|v| v.iter()` → iterates over the elements of that inner vector as `&i32`.
+- `.cloned()` → converts `&i32` → `i32`.
+- `.collect()` → gathers all resulting `i32` values into `Vec<i32>`.
+
+    ```text
+    Vec<Vec<i32>>
+        ↓ iter()
+    &Vec<i32>
+        ↓ flat_map()
+    multiple inner iterators
+        ↓ cloned()
+       i32
+        ↓ collect()
+      Vec<i32>
+    ```
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 032
+
+- Implement: `fn parse_positive_numbers(values: &[&str]) -> Vec<i32>`
+- Given:
+
+    ```rust
+        let values = vec![
+            "10",
+            "-5",
+            "hello",
+            "20",
+            "world",
+            "30",
+        ];
+    ```
+
+- Expected result: `[10, 20, 30]`
+
+### Response
+
+```rust
+fn parse_positive_numbers(values: &[&str]) -> Vec<i32> {
+    values
+        .iter()
+        .filter(|&val| val.parse::<i32>().map_or(false, |n| n > 0))
+        .map(|&val| val.parse::<i32>().unwrap())
+        .collect::<Vec<i32>>()
+}
+
+fn main() {
+    let values = vec![
+        "10",
+        "-5",
+        "hello",
+        "20",
+        "world",
+        "30",
+    ];
+
+    println!("{:?}", parse_positive_numbers(&values));
+}
+```
+
+There is another implementation as well.
+
+```rust
+fn parse_positive_numbers(values: &[&str]) -> Vec<i32> {
+    values
+        .iter()
+        .filter_map(|value| {
+            match value.parse::<i32>() {
+                Ok(num) if num > 0 => Some(num),
+                _ => None,
+            }
+        })
+        .collect()
+}
+```
+
+### `filter_map()`
+
+- **Combines `filter()` + `map()`** into one operation.
+- Takes each element and returns an **`Option<T>`**.
+- `Some(value)` → value is **kept**.
+- `None` → value is **discarded**.
+- Useful when the transformation itself can fail or some elements shouldn't produce an output.
+- Unlike `filter()`, it can **change the element's type**.
+
+```rust
+values.iter().filter_map(|value| {
+    match value.parse::<i32>() {
+        Ok(n) if n > 0 => Some(n),
+        _ => None,
+    }
+})
+```
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 033
+
+- Implement:
+
+    ```rust
+        fn pair_names_with_scores(
+            names: &[String],
+            scores: &[i32],
+        ) -> Vec<(String, i32)>
+    ```
+
+- Given:
+
+    ```rust
+        let names = vec![
+            String::from("Alice"),
+            String::from("Bob"),
+            String::from("Charlie"),
+        ];
+        let scores = vec![85, 92, 78];
+    ```
+
+- Expected output:
+
+    ```text
+        [
+            ("Alice", 85),
+            ("Bob", 92),
+            ("Charlie", 78)
+        ]
+    ```
+
+### Response
+
+```rust
+fn pair_names_with_scores(names: &[String], scores: &[i32]) -> Vec<(String, i32)> {
+    let result = names
+                    .iter().cloned()
+                    .zip(scores.iter().cloned())
+                    .collect();
+    result
+}
+
+fn main() {
+    let names: Vec<String> = vec![
+        String::from("Alice"),
+        String::from("Bob"),
+        String::from("Charlie"),
+    ];
+    let scores = vec![85, 92, 78];
+    
+    let paired = pair_names_with_scores(&names, &scores);
+    println!("{:?}", paired);
+}
+```
+
+#### `cloned()`
+
+- The `cloned()` method creates an **owned copy** of each element in an iterator.
+- Useful when you need to transform references into owned values, like converting `&String` to `String`.
+- In the example, `names.iter().cloned()` converts `&String` to `String`, and `scores.iter().cloned()` converts `&i32` to `i32`.
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 034
+
+- Implement: `fn partition_numbers(numbers: &[i32]) -> (Vec<i32>, Vec<i32>)`
+- Given: `let numbers = vec![1, 2, 3, 4, 5, 6];`.
+- These should produce: `([1, 3, 5], [2, 4, 6])`
+- The first Vec should contain odd numbers and the second should contain even numbers.
+- Use `partition()` to separate odd and even numbers.
+
+### Response
+
+```rust
+fn partition_numbers(numbers: &[i32]) -> (Vec<i32>, Vec<i32>) {
+    let (odd, even): (Vec<i32>, Vec<i32>) = numbers
+        .iter()
+        .cloned()
+        .partition(|&num| num % 2 != 0);
+    (odd, even)
+}
+
+fn main() {
+    let numbers = vec![1, 2, 3, 4, 5, 6];
+    let (odd, even) = partition_numbers(&numbers);
+    println!("Odd: {:?}, Even: {:?}", odd, even);
+}
+```
+
+#### `partition()`
+
+- The `partition()` method splits an iterator into two collections based on a predicate.
+- The first collection contains elements for which the predicate returns `true`, and the second contains elements for which the predicate returns `false`.
+- In the example, `numbers.iter().cloned().partition(|&num| num % 2 != 0)` separates odd and even numbers.
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 035
+
+- Implement: `fn word_lengths(words: &[String]) -> Vec<usize>`
+- Given:
+
+    ```rust
+        let words = vec![
+            String::from("Rust"),
+            String::from("Java"),
+            String::from("Python"),
+        ];
+    ```
+
+- Expected: `[4, 4, 6]`
+- Use `fold()` and `iter()` only.
+
+### Response
+
+```rust
+fn word_lengths(words: &[String]) -> Vec<usize> {
+    words.iter().fold(Vec::new(), |mut acc, word| {
+        acc.push(word.len());
+        acc
+    })
+}
+
+fn main() {
+    let words = vec![
+        String::from("Rust"),
+        String::from("Java"),
+        String::from("Python"),
+    ];
+    let lengths = word_lengths(&words);
+    println!("Word lengths: {:?}", lengths);
+}
+```
+
+#### `fold()`
+
+- The `fold()` method is used to accumulate values from an iterator into a single result.
+- It takes an initial accumulator value and a closure that specifies how to combine each element with the accumulator.
+- In the example, `words.iter().fold(Vec::new(), |mut acc, word| { acc.push(word.len()); acc })` creates a new `Vec<usize>` and pushes the length of each word into it.
+
+[Go to the Top](#table-of-content)
+
+---
+
