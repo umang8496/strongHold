@@ -18,6 +18,10 @@ This project helps get the developer familiar with ownership, lifetimes, and err
 - [Exercise 037 (Copy vs Move)](#exercise-037)
 - [Exercise 038 (Ownership Through Function Boundaries)](#exercise-038)
 - [Exercise 039 (Borrowing Rules and Non-Lexical Lifetimes)](#exercise-039)
+- [Exercise 040 (Borrow Lifetimes and Scope)](#exercise-040)
+- [Exercise 041 (Non-Lexical Lifetimes in Practice)](#exercise-041)
+- [Exercise 042 (Lifetime Annotations and Lifetime Relationships)](#exercise-042)
+- [Exercise 043 (Lifetimes in Structs)](#exercise-043)
 
 ---
 
@@ -1202,11 +1206,223 @@ And the key NLL principle:
 
 ## Exercise 040
 
+### 1. Borrowing Through Functions
+
+```rust
+fn read(s: &String) {
+    println!("{}", s);
+}
+
+fn modify(s: &mut String) {
+    s.push_str(" world");
+}
+
+fn main() {
+    let mut value = String::from("hello");
+
+    read(&value);
+    modify(&mut value);
+
+    println!("{}", value);
+}
+```
+
+This compiles because the immutable borrow created for `read()` ends after the call.
+
+```text
+value
+  │
+  ├── immutable borrow → read()
+  │                         ↓
+  │                    borrow ends
+  │
+  └── mutable borrow → modify()
+```
+
+### 2. NLL and Last Use
+
+```rust
+let r = &value;
+
+read(r);
+
+modify(&mut value);
+```
+
+This compiles because `read(r)` is the last use of `r`.
+
+NLL allows the immutable borrow to end there, even though `r` remains in lexical scope.
+
+```text
+r created
+   ↓
+read(r)
+   ↓
+last use
+   ↓
+borrow ends
+   ↓
+&mut value allowed
+```
+
+### 3. Borrow Used Later
+
+```rust
+let r = &value;
+
+read(r);
+
+modify(&mut value);
+
+println!("{}", r);
+```
+
+This does not compile.
+
+The later use of `r` means its immutable borrow must remain active when `modify()` attempts to create a mutable borrow.
+
+```text
+r → immutable borrow
+          │
+          ├── modify(&mut value)  ← conflict
+          │
+          └── println!("{}", r)
+```
+
+### 4. Explicit Inner Scope
+
+```rust
+{
+    let r = &value;
+    println!("{}", r);
+}
+
+modify(&mut value);
+```
+
+The inner block limits the lexical scope of `r`.
+
+When the block ends:
+
+```text
+r goes out of scope
+       ↓
+borrow ends
+       ↓
+mutable borrow allowed
+```
+
+However, in simple cases NLL can already end the borrow at its last use, so an explicit block is not always necessary.
+
+### 5. Inner Scope Cannot Override Another Active Borrow
+
+```rust
+let r1 = &value;
+
+{
+    let r2 = &mut value;
+    r2.push_str(" world");
+}
+
+println!("{}", r1);
+```
+
+This does not compile.
+
+`r1` is still needed later, so its immutable borrow remains active while `r2` attempts a mutable borrow.
+
+```text
+r1 → immutable borrow ──────────────┐
+                                   │
+r2 → mutable borrow                │
+      ↑                            │
+      └──── conflict ──────────────┘
+```
+
+The inner scope only limits `r2`; it cannot shorten the lifetime of `r1`.
+
+### Key Rules
+
+1. A borrow lifetime is not necessarily the same as a variable's lexical scope.
+2. NLL allows a borrow to end after its last actual use.
+3. A reference variable can remain in scope after its borrow has ended.
+4. An explicit block can constrain a variable's scope.
+5. A block cannot make another active borrow disappear.
+6. Mutable and immutable borrows cannot overlap.
+
+### Final Mental Model
+
+```text
+Variable scope
+      ↓
+Where the variable exists
+
+Borrow lifetime
+      ↓
+How long the reference is actually needed
+
+NLL
+      ↓
+Can shorten borrow lifetime to last use
+```
+
+> **The borrow checker cares about when a reference is actually used, not merely whether the reference variable is still in scope.**
+
+
 [Go to the Top](#table-of-content)
 
 ---
 
 ## Exercise 041
+
+**NLL (Non-Lexical Lifetimes)** means a borrow can end when its **last actual use** ends, rather than necessarily at the end of its lexical scope.
+
+```rust
+let mut value = String::from("hello");
+
+let r = &value;
+println!("{}", r);      // last use of r
+
+value.push_str(" world"); // allowed
+```
+
+Although `r` remains in scope, its borrow has ended after its last use.
+
+### Key Distinction
+
+- **Variable scope** — where a variable exists.
+- **Reference** — the value stored in the variable.
+- **Active borrow** — the period during which Rust must enforce the borrowing relationship.
+
+These are not necessarily the same duration.
+
+### Important Rule
+
+Rust allows:
+
+- Multiple immutable borrows simultaneously.
+- One exclusive mutable borrow.
+- A mutable borrow after immutable borrows have ended.
+- NLL determines when those borrows actually end.
+
+```text
+immutable borrow
+      |
+      v
+  last use
+      |
+      v
+borrow ends
+      |
+      v
+mutable borrow allowed
+```
+
+### Key Takeaway
+
+> A borrow's lifetime is determined by how the reference is actually used, not simply by the surrounding `{}` scope.
+
+This provides the foundation for understanding **explicit lifetime annotations** in Exercise 42.
 
 [Go to the Top](#table-of-content)
 
@@ -1214,11 +1430,505 @@ And the key NLL principle:
 
 ## Exercise 042
 
+### 1. Why Lifetimes Exist
+
+A reference must never outlive the data it points to.
+
+Consider:
+
+```rust
+let result;
+
+{
+    let a = String::from("hello");
+    result = &a;
+}
+
+println!("{}", result);
+```
+
+This is invalid because `a` is dropped at the end of the inner block while `result` is still being used.
+
+The result would be a **dangling reference**.  
+Rust's borrow checker prevents this at compile time.
+
+### 2. The Problem with Returning References
+
+Consider:
+
+```rust
+fn longer(x: &str, y: &str) -> &str {
+    if x.len() > y.len() {
+        x
+    } else {
+        y
+    }
+}
+```
+
+The function can return either `x` or `y`.  
+
+The compiler therefore needs to know:
+
+> What is the lifetime relationship between the returned reference and the input references?
+
+This is not a runtime problem.  
+It is a compile-time ownership and borrowing problem.
+
+### 3. Introducing `'a`
+
+We can express the relationship explicitly:
+
+```rust
+fn longer<'a>(x: &'a str, y: &'a str) -> &'a str {
+    if x.len() > y.len() {
+        x
+    } else {
+        y
+    }
+}
+```
+
+Conceptually:
+
+```text
+x ──────┐
+        ├── 'a ──> returned reference
+y ──────┘
+```
+
+`'a` is a **lifetime parameter**.
+
+It names a lifetime relationship.  
+It is not a fixed duration and it does not extend the lifetime of any value.
+
+### 4. Lifetime Annotations Are Contracts
+
+The function signature acts as a contract.
+
+```rust
+fn longer<'a>(x: &'a str, y: &'a str) -> &'a str
+```
+
+Conceptually says:
+
+> The returned reference is related to the lifetimes of `x` and `y`.
+
+The compiler uses this contract when checking callers.
+
+For example:
+
+```rust
+let a = String::from("hello");
+let b = String::from("world!");
+
+let result = longer(&a, &b);
+
+println!("{}", result);
+```
+
+This is safe because both `a` and `b` remain alive while `result` is used.
+
+### 5. The Shorter Lifetime Matters
+
+Consider:
+
+```rust
+let a = String::from("hello");
+
+let result;
+
+{
+    let b = String::from("world!");
+
+    result = longer(&a, &b);
+}
+
+println!("{}", result);
+```
+
+This is rejected.
+
+Why?
+
+`b` is dropped before `result` is used.
+
+Since `longer()` can return either `x` or `y`, `result` could refer to `b`.
+
+Conceptually:
+
+```text
+a ───────────────────────────────>
+
+b ────────────────>
+                  ^
+                  |
+              dropped
+
+result ──────────────────────────> X
+```
+
+The returned reference cannot safely remain usable beyond the lifetime for which its referenced data is valid.
+
+### 6. Lifetime Does Not Mean Lexical Scope
+
+A lifetime should not simply be thought of as:
+
+> "The `{}` block where a variable exists."
+
+We already saw this with NLL.
+
+A variable can remain in lexical scope while its borrow has already ended.
+
+```rust
+let mut value = String::from("hello");
+
+let r = &value;
+
+println!("{}", r);
+
+value.push_str(" world");
+```
+
+The borrow of `value` through `r` ends after the last use of `r`.
+
+Therefore:
+
+```text
+variable scope ≠ active borrow lifetime
+```
+
+### 7. One Lifetime vs Multiple Lifetimes
+
+Consider:
+
+```rust
+fn longer<'a>(x: &'a str, y: &'a str) -> &'a str
+```
+
+There is one lifetime relationship:
+
+```text
+x ──┐
+    ├── 'a ──> returned reference
+y ──┘
+```
+
+Now consider:
+
+```rust
+fn first<'a, 'b>(x: &'a str, y: &'b str) -> &'a str {
+    x
+}
+```
+
+The relationships are independent:
+
+```text
+x ── 'a ──> returned reference
+
+y ── 'b
+```
+
+This tells the compiler that the returned reference depends on `x`, not `y`.
+
+### 8. Why Separate Lifetimes Matter
+
+Consider:
+
+```rust
+fn first<'a, 'b>(x: &'a str, _y: &'b str) -> &'a str {
+    x
+}
+```
+
+And:
+
+```rust
+let a = String::from("hello");
+
+let result;
+
+{
+    let b = String::from("world!");
+
+    result = first(&a, &b);
+}
+
+println!("{}", result);
+```
+
+This is valid.
+
+The function always returns `x`.
+
+Therefore:
+
+```text
+a ── 'a ───────────────> result
+
+b ── 'b ──> dropped
+```
+
+`result` depends on `a`, so `b` does not need to remain alive.
+
+### 9. Important Mental Model
+
+Do not think:
+
+```text
+'a = 10 seconds
+```
+
+or:
+
+```text
+'a = this particular {}
+```
+
+Instead:
+
+```text
+'a = a named lifetime relationship
+```
+
+The actual lifetimes are determined when the function is used.  
+The annotation tells Rust how those lifetimes are related.
+
+### 10. What Lifetime Annotations Do Not Do
+
+Lifetime annotations:
+
+- Do not extend an object's lifetime.
+- Do not prevent an object from being dropped.
+- Do not allocate memory.
+- Do not keep references alive.
+- Do not change runtime behavior.
+
+They provide information to the borrow checker about **relationships between references**.
+
+### 11. Key Takeaway
+
+The central idea is:
+
+> **Lifetime annotations describe how the validity of one reference depends on the validity of other references.**
+
+For example:
+
+```rust
+fn longer<'a>(x: &'a str, y: &'a str) -> &'a str
+```
+
+means the returned reference is constrained by the lifetime relationship represented by `'a`.
+
+Whereas:
+
+```rust
+fn first<'a, 'b>(x: &'a str, y: &'b str) -> &'a str
+```
+
+expresses that the returned reference depends on `x` but not on `y`.
+
 [Go to the Top](#table-of-content)
 
 ---
 
 ## Exercise 043
+
+### 1. Structs Containing References
+
+A struct containing a reference must specify the lifetime relationship of that reference.
+
+```rust
+struct User<'a> {
+    name: &'a str,
+}
+```
+
+This means:
+
+> `User<'a>` contains a reference whose validity is associated with lifetime `'a`.
+
+The struct does **not** own the referenced data.
+
+```text
+String
+  │
+  │ borrowed
+  ▼
+&'a str
+  │
+  ▼
+User<'a>
+```
+
+### 2. Basic Usage
+
+```rust
+fn main() {
+    let name = String::from("Alice");
+
+    let user = User {
+        name: &name,
+    };
+
+    println!("{}", user.name);
+}
+```
+
+This is valid because `name` remains alive while `user.name` is being used.
+
+### 3. Dangling Reference
+
+This is invalid:
+
+```rust
+fn main() {
+    let user;
+
+    {
+        let name = String::from("Alice");
+
+        user = User {
+            name: &name,
+        };
+    }
+
+    println!("{}", user.name);
+}
+```
+
+The relationship becomes:
+
+```text
+name
+ │
+ │ referenced by
+ ▼
+user.name
+
+inner block ends
+      ↓
+name dropped
+      ↓
+user.name still exists
+      ↓
+dangling reference
+```
+
+Rust rejects this at compile time.
+
+### 4. Lifetime as Part of the Type
+
+The lifetime parameter belongs to the **reference stored inside the struct**.
+
+```rust
+struct User<'a> {
+    name: &'a str,
+}
+```
+
+It does not mean that the `User` itself must exist for exactly `'a`.
+
+It means:
+
+> The reference stored in `User<'a>` must remain valid according to the lifetime relationship represented by `'a`.
+
+### 5. Lifetime Propagation Through Functions
+
+Consider:
+
+```rust
+fn create_user<'a>(name: &'a str) -> User<'a> {
+    User { name }
+}
+```
+
+The relationship is:
+
+```text
+name: &'a str
+      │
+      ▼
+User<'a>
+```
+
+The returned `User` contains a reference tied to the lifetime of the input reference.
+
+Example:
+
+```rust
+fn main() {
+    let name = String::from("Alice");
+
+    let user = create_user(&name);
+
+    println!("{}", user.name);
+}
+```
+
+This is safe because `name` remains alive while `user.name` is used.
+
+### 6. Lifetime Contract
+
+A useful way to read:
+
+```rust
+fn create_user<'a>(name: &'a str) -> User<'a>
+```
+
+is:
+
+> The `User` returned by this function contains a reference whose validity is tied to the lifetime of the `name` reference supplied to the function.
+
+Lifetime annotations therefore describe **relationships between references**.
+
+They do not:
+
+- Extend an object's lifetime.
+- Prevent an object from being dropped.
+- Allocate memory.
+- Keep an object alive.
+
+### 7. Core Mental Model
+
+```text
+Owner
+  │
+  │ owns
+  ▼
+String
+  │
+  │ borrowed
+  ▼
+&'a str
+  │
+  │ stored inside
+  ▼
+User<'a>
+```
+
+The fundamental rule remains:
+
+> A reference must never outlive the data it references.
+
+### 8. Key Takeaway
+
+Struct lifetime annotations are necessary because the compiler must know the lifetime relationship of references stored inside types.
+
+The progression is:
+
+```text
+Reference
+    ↓
+Borrowing rules
+    ↓
+   NLL
+    ↓
+Function lifetime relationships
+    ↓
+Struct lifetime relationships
+```
 
 [Go to the Top](#table-of-content)
 
@@ -1235,4 +1945,3 @@ And the key NLL principle:
 [Go to the Top](#table-of-content)
 
 ---
-
