@@ -27,6 +27,18 @@ This project helps get the developer familiar with ownership, lifetimes, error-h
 - [Exercise 044 ('static Lifetime and static Items)](#exercise-044)
 - [Exercise 045 (Returning References Safely)](#exercise-045)
 
+### Error Handling
+
+- [Exercise 046 (`Result<T, E>` Intro)](#exercise-046)
+- [Exercise 047 (Handling `Result` with `match`)](#exercise-047)
+- [Exercise 048 ()](#exercise-048)
+- [Exercise 049 ()](#exercise-049)
+- [Exercise 050 ()](#exercise-050)
+- [Exercise 051 ()](#exercise-051)
+- [Exercise 052 ()](#exercise-052)
+
+### Collections & Standard Library
+
 ---
 
 ## Exercise 036
@@ -2746,3 +2758,172 @@ Returning references safely
 [Go to the Top](#table-of-content)
 
 ---
+
+## Exercise 046
+
+Write a function:
+
+- `fn parse_number(input: ???) -> Result<???, ???>` that attempts to parse a string slice into an `i32`
+- Given: `"42"` and `"hello"`
+- `"42"` should produce `Ok(42)`
+- `"hello"` should produce an error
+- Handle both `Ok` and `Err` using `match`
+- Print the underlying error
+- Don't use `unwrap()`
+- Use Rust's standard integer parsing functionality
+
+### Response
+
+```rust
+fn parse_number(input: &str) -> Result<i32, std::num::ParseIntError> {
+    input.parse::<i32>()
+}
+
+fn main() {
+    let forty_two: String = String::from("42");
+    let hello: String = String::from("hello");
+
+    let result_1 = parse_number(&forty_two);
+
+    match result_1 {
+        Ok(num) => println!("{}", num),
+        Err(e) => println!("{}", e),
+    }
+
+    let result_2 = parse_number(&hello);
+
+    match result_2 {
+        Ok(num) => println!("{}", num),
+        Err(e) => println!("{}", e),
+    }
+}
+```
+
+### Learning
+
+- `Result<T, E>` represents either success or failure.
+- `Ok(T)` contains the successful value.
+- `Err(E)` contains the error.
+- `Result<i32, ParseIntError>` means success produces an `i32` and failure produces a `ParseIntError`.
+- `input.parse::<i32>()` returns a `Result<i32, std::num::ParseIntError>`.
+- Standard library operations define their own error types; they don't need to be memorized.
+- Error types can be discovered through API documentation, compiler errors, or IDE tooling.
+- `match` allows explicit handling of both success and failure.
+- `{:?}` uses `Debug` formatting, while `{}` uses `Display` formatting.
+- `ParseIntError` implements `Display`, making `{}` suitable for displaying the error message.
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 047
+
+Write a function:
+
+- `fn double_number(input: ???) -> Result<???, ???>` that parses a string and doubles the resulting integer
+- Given: `"10"` and `"another_ten"`
+- `"10"` should produce `Ok(20)`
+- `"another_ten"` should produce an error
+- Use `parse::<i32>()`
+- Handle the parsing result using `match`
+- Do not use `unwrap()`
+- The function should return the `Result` rather than printing the error
+- In `main()`, use `match` to handle both success and failure
+
+### Response
+
+```rust
+fn double_number(input: &str) -> Result<i32, std::num::ParseIntError> {
+    let result = input.parse::<i32>();
+
+    match result {
+        Ok(value) => Ok(value * 2),
+        Err(error) => Err(error),
+    }
+}
+
+fn main() {
+    let ten = String::from("10");
+
+    match double_number(&ten) {
+        Ok(value) => {
+            println!("Input: {}", ten);
+            println!("Output: {}", value);
+        }
+        Err(error) => {
+            println!("Input: {}", ten);
+            println!("Error: {}", error);
+        }
+    }
+
+    let another_ten = String::from("another_ten");
+
+    match double_number(&another_ten) {
+        Ok(value) => {
+            println!("Input: {}", another_ten);
+            println!("Output: {}", value);
+        }
+        Err(error) => {
+            println!("Input: {}", another_ten);
+            println!("Error: {}", error);
+        }
+    }
+}
+```
+
+### Learning
+
+- `match` can explicitly handle both variants of a `Result<T, E>`.
+- `Ok(value)` represents the successful path.
+- `Err(error)` represents the failure path.
+- A successful `Result` can be transformed into another `Ok` value.
+- An error can be propagated unchanged using `Err(error)`.
+- `Result` itself can be returned from a function rather than handling the error immediately.
+- `Err(error)` gives access to the actual underlying error value.
+- `Display` formatting (`{}`) can be used when the error implements `Display`.
+- Avoid hardcoding error messages when the actual error value is available.
+- A common pattern is:
+
+    ```text
+    Result
+    │
+    ├── Ok(value)  → transform/process value
+    │
+    └── Err(error) → propagate/handle error
+    ```
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 048
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 049
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 050
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 051
+
+[Go to the Top](#table-of-content)
+
+---
+
+## Exercise 052
+
+[Go to the Top](#table-of-content)
+
+---
+
+
