@@ -24,7 +24,7 @@ This project helps get the developer familiar with ownership, lifetimes, error-h
 - [Exercise 041 (Non-Lexical Lifetimes in Practice)](#exercise-041)
 - [Exercise 042 (Lifetime Annotations and Lifetime Relationships)](#exercise-042)
 - [Exercise 043 (Lifetimes in Structs)](#exercise-043)
-- [Exercise 044 ('static Lifetime and `static` Items)](#exercise-044)
+- [Exercise 044 (`'static` Lifetime and `static` Items)](#exercise-044)
 - [Exercise 045 (Returning References Safely)](#exercise-045)
 
 ### Error Handling
@@ -32,10 +32,10 @@ This project helps get the developer familiar with ownership, lifetimes, error-h
 - [Exercise 046 (`Result<T, E>` Intro)](#exercise-046)
 - [Exercise 047 (Handling `Result` with `match`)](#exercise-047)
 - [Exercise 048 (The `?` Operator)](#exercise-048)
-- [Exercise 049 ()](#exercise-049)
-- [Exercise 050 ()](#exercise-050)
-- [Exercise 051 ()](#exercise-051)
-- [Exercise 052 ()](#exercise-052)
+- [Exercise 049 (Multiple Fallible Operations)](#exercise-049)
+- [Exercise 050 (Custom Errors)](#exercise-050)
+- [Exercise 051 (`From`, `Into`, and Error Conversion)](#exercise-051)
+- [Exercise 052 (Error Architecture: Recoverable vs Unrecoverable)](#exercise-052)
 
 ### Collections & Standard Library
 
@@ -2952,11 +2952,135 @@ fn main() {
 
 ## Exercise 049
 
+Write a function:
+
+- `fn process_number(input: &str) -> Result<i32, ???>` that parses a number, squares it, and adds `10`.
+- Given: `"20"` → `Ok(410)`, `"abc"` → `Err(...)`.
+- Use `?` for the fallible parsing operation.
+- `main` should handle both success and error cases.
+- Avoid duplicating the `match` logic.
+- Constraints:
+
+  - No `unwrap()`.
+  - No `match` inside `process_number`.
+  - Use `?` for error propagation.
+
+### Response
+
+```rust
+fn process_number(input: &str) -> Result<i32, std::num::ParseIntError> {
+    let number: i32 = input.parse()?;
+    let squared = number * number;
+    let add_ten = squared + 10;
+    Ok(add_ten)
+}
+
+fn print_result(input: &str) {
+    match process_number(input) {
+        Ok(value) => {
+            println!("Input: {}", input);
+            println!("Output: {}", value);
+        }
+        Err(error) => {
+            println!("Input: {}", input);
+            println!("Error: {}", error);
+        }
+    }
+}
+
+fn main() {
+    print_result("20");
+    print_result("abc");
+}
+```
+
+### Learning
+
+- `?` can propagate errors from individual fallible operations.
+- Once an error is propagated, subsequent statements are not executed.
+- Ordinary operations can continue normally after a successful `?`.
+- `Result<T, E>` allows a function to represent both success and failure.
+- Repeated `match` logic can be extracted into a helper function.
+- The `match` itself is still meaningful; the refactoring eliminates duplication rather than error handling.
+- `process_number()` performs the operation and returns a `Result`.
+- `print_result()` handles the `Result` and formats the output.
+- `main()` orchestrates the calls.
+
 [Go to the Top](#table-of-content)
 
 ---
 
 ## Exercise 050
+
+Define a custom error type:
+
+- `NumberError::ParseError`
+- `NumberError::NegativeNumber`
+
+Then write:
+
+- `fn process_number(input: &str) -> Result<i32, NumberError>` that parses, validates, squares, and adds `10`.
+- Given: `"20"` → `Ok(410)`, `"-1"` → `Err(NegativeNumber)`, `"abc"` → `Err(ParseError)`.
+- Handle the final `Result` in a helper function.
+- Constraints:
+
+  - No `unwrap()`.
+  - Use a custom error enum.
+  - Handle the parsing error manually.
+
+### Response
+
+```rust
+#[derive(Debug)]
+enum NumberError {
+    ParseError,
+    NegativeNumber,
+}
+
+fn process_number(number: &str) -> Result<i32, NumberError> {
+    let parsed_number = number.parse::<i32>();
+
+    match parsed_number {
+        Ok(num) => {
+            if num < 0 {
+                Err(NumberError::NegativeNumber)
+            } else {
+                let squared = num * num;
+                let add_ten = squared + 10;
+                Ok(add_ten)
+            }
+        }
+        Err(_) => Err(NumberError::ParseError),
+    }
+}
+
+fn print_result(input: &str) {
+    match process_number(input) {
+        Ok(value) => {
+            println!("Input: {}", input);
+            println!("Output: {}", value);
+        }
+        Err(error) => {
+            println!("Input: {}", input);
+            println!("Error: {:?}", error);
+        }
+    }
+}
+
+fn main() {
+    print_result("20");
+    print_result("-1");
+    print_result("abc");
+}
+```
+
+### Learning
+
+- A custom enum can model application/domain-specific errors.
+- `Result<T, E>` can use a user-defined error type.
+- A library error such as `ParseIntError` can be translated into a domain error such as `NumberError::ParseError`.
+- `match` can be used to explicitly convert one error representation into another.
+- `#[derive(Debug)]` allows the custom error to be printed with `{:?}`.
 
 [Go to the Top](#table-of-content)
 
@@ -2964,11 +3088,161 @@ fn main() {
 
 ## Exercise 051
 
+Define a custom error type:
+
+- `NumberError::ParseError`
+- `NumberError::NegativeNumber`
+
+Implement conversion from `ParseIntError` to `NumberError`, then use `?` for parsing.
+
+- `fn process_number(input: &str) -> Result<i32, NumberError>`
+- Given: `"20"` → `Ok(410)`, `"-1"` → `Err(NegativeNumber)`, `"abc"` → `Err(ParseError)`.
+- Constraints:
+
+  - Use `From<ParseIntError> for NumberError`.
+  - Use `?` for parsing.
+  - Do not use `match` for parsing.
+  - No `unwrap()`.
+
+### Response
+
+```rust
+use std::num::ParseIntError;
+
+#[derive(Debug)]
+enum NumberError {
+    ParseError,
+    NegativeNumber,
+}
+
+// This is a common pattern in Rust for converting one error type to another.
+// It allows for seamless error handling and propagation between different error types.
+
+impl From<ParseIntError> for NumberError {
+    fn from(_error: ParseIntError) -> Self {
+        NumberError::ParseError
+    }
+}
+
+fn process_number(input: &str) -> Result<i32, NumberError> {
+    let number: i32 = input.parse::<i32>()?;
+
+    if number < 0 {
+        return Err(NumberError::NegativeNumber);
+    }
+
+    let squared = number * number;
+    let add_ten = squared + 10;
+
+    Ok(add_ten)
+}
+
+fn print_result(input: &str) {
+    match process_number(input) {
+        Ok(value) => {
+            println!("Input: {}", input);
+            println!("Output: {}", value);
+        }
+        Err(error) => {
+            println!("Input: {}", input);
+            println!("Error: {:?}", error);
+        }
+    }
+}
+
+fn main() {
+    print_result("20");
+    print_result("-1");
+    print_result("abc");
+}
+```
+
+### Learning
+
+- `From<A> for B` defines how to convert `A` into `B`.
+- `ParseIntError` can be converted into the application's `NumberError`.
+- `?` uses the available `From` conversion when propagating an error.
+- `?` can therefore convert:
+  - `Err(ParseIntError)`
+  - into `Err(NumberError::ParseError)`
+- `From` is normally implemented directly; Rust provides the corresponding `Into` conversion.
+- Custom errors allow library-specific errors to be translated into application/domain-specific errors.
+- `From` + `?` removes repetitive manual error-conversion code.
+
 [Go to the Top](#table-of-content)
 
 ---
 
 ## Exercise 052
+
+## Exercise 52
+
+Write a division function that distinguishes recoverable errors from programming invariants.
+
+- `fn divide(dividend: i32, divisor: i32) -> Result<i32, DivisionError>`
+- Return `DivisionByZero` when the divisor is zero.
+- Return `NegativeDividend` when the dividend is negative.
+- Otherwise return the division result.
+- Define `fn require_positive(value: i32)` using `assert!`.
+- `require_positive()` represents a program invariant rather than a recoverable runtime error.
+- Handle `divide()` errors using `match`.
+
+### Response
+
+```rust
+#[derive(Debug)]
+enum DivisionError {
+    DivisionByZero,
+    NegativeDividend,
+}
+
+fn divide(dividend: i32, divisor: i32) -> Result<i32, DivisionError> {
+    if divisor == 0 {
+        return Err(DivisionError::DivisionByZero);
+    }
+
+    if dividend < 0 {
+        return Err(DivisionError::NegativeDividend);
+    }
+
+    Ok(dividend / divisor)
+}
+
+fn require_positive(value: i32) {
+    assert!(value > 0);
+}
+
+fn main() {
+    let dividend = 10;
+    let divisor = 2;
+
+    match divide(dividend, divisor) {
+        Ok(result) => println!("Result: {}", result),
+        Err(error) => println!("Error: {:?}", error),
+    }
+
+    let dividend = 10;
+    let divisor = 0;
+
+    match divide(dividend, divisor) {
+        Ok(result) => println!("Result: {}", result),
+        Err(error) => println!("Error: {:?}", error),
+    }
+
+    require_positive(10);
+}
+```
+
+### Learning
+
+- `Result<T, E>` is appropriate when a failure is expected and the caller can respond to it.
+- `DivisionByZero` is a recoverable error, so `divide()` returns `Err(...)`.
+- `NegativeDividend` is also modeled as a recoverable/domain error.
+- `assert!` is appropriate for enforcing a program invariant.
+- `require_positive(10)` succeeds because the invariant is satisfied.
+- If `require_positive(-1)` were called, the assertion would fail and the program would panic.
+- `panic!`/`assert!` should not generally be used for ordinary user/input/runtime errors that callers can reasonably handle.
+- Error architecture is partly about deciding **who should handle the failure and whether continuing execution is meaningful**.
 
 [Go to the Top](#table-of-content)
 
