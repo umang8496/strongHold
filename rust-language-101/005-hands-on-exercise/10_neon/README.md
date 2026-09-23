@@ -2885,11 +2885,11 @@ fn main() {
 - A common pattern is:
 
     ```text
-    Result
-    │
-    ├── Ok(value)  → transform/process value
-    │
-    └── Err(error) → propagate/handle error
+        Result
+        │
+        ├── Ok(value)  → transform/process value
+        │
+        └── Err(error) → propagate/handle error
     ```
 
 [Go to the Top](#table-of-content)
@@ -3174,8 +3174,6 @@ fn main() {
 ---
 
 ## Exercise 052
-
-## Exercise 52
 
 Write a division function that distinguishes recoverable errors from programming invariants.
 

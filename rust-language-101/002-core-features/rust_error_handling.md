@@ -11,14 +11,12 @@
 
 # Rust Error Handling — The Complete Guide
 
-A dedicated, example-heavy reference for **how** and **why** Rust handles errors the
-way it does. Built as a quick-recap companion: skim the diagrams, copy the snippets,
-re-read the philosophy when a design decision feels ambiguous.
+A dedicated, example-heavy reference for **how** and **why** Rust handles errors the way it does.  
+Built as a quick-recap companion: skim the diagrams, copy the snippets, re-read the philosophy when a design decision feels ambiguous.
 
 > **Mental model in one sentence:**
-> In Rust, *errors are ordinary values* moved through the type system with `Result`
-> and `Option`, while *bugs* — violated invariants the program can't sanely continue
-> past — trigger a `panic!`.
+> In Rust, *errors are ordinary values* moved through the type system with `Result` and `Option`,  
+> while *bugs* — violated invariants the program can't sanely continue past — trigger a `panic!`.
 
 ## Table of Content
 
@@ -70,7 +68,8 @@ re-read the philosophy when a design decision feels ambiguous.
 
 Most mainstream languages (Java, C#, Python, C++) handle errors with **exceptions**:
 a hidden control-flow channel that unwinds the stack until some `catch` block grabs
-it. The problem: nothing in a function's signature tells you what it can throw, and
+it.  
+The problem: nothing in a function's signature tells you what it can throw, and
 it's easy to forget to handle anything at all.
 
 Rust made a different choice:
@@ -92,21 +91,22 @@ fn parse_number(input: &str) -> Result<i32, std::num::ParseIntError> {
 }
 ```
 
-The return type `Result<i32, ParseIntError>` is a **contract**: "I hand you back
-either an `i32` or a `ParseIntError`, and you must decide what to do with each."
+The return type `Result<i32, ParseIntError>` is a **contract**:  
+> "I hand you back either an `i32` or a `ParseIntError`, and you must decide what to do with each."
 
-There is no `throw`. There is no invisible unwinding for ordinary failures. The error
-is a value you can store in a variable, pass to a function, log, transform, or ignore
-— all explicitly.
+There is no `throw`. There is no invisible unwinding for ordinary failures.  
+The error is a value you can store in a variable, pass to a function, log, transform, or ignore — all explicitly.
 
 ### Why this matters
 
-- **Honesty.** The type signature is the documentation. You cannot be surprised by an
-  error a function "forgot" to mention.
-- **Composability.** Because errors are values, you compose them with normal tools:
-  functions, generics, iterators, pattern matching.
-- **Zero cost.** `Result` compiles down to a tagged union (an enum). There is no
-  exception-table lookup, no stack-unwinding machinery on the happy path.
+- **Honesty.**  
+  The type signature is the documentation.  
+  You cannot be surprised by an error a function "forgot" to mention.
+- **Composability.**  
+  Because errors are values, you compose them with normal tools: functions, generics, iterators, pattern matching.
+- **Zero cost.**  
+  `Result` compiles down to a tagged union (an enum).  
+  There is no exception-table lookup, no stack-unwinding machinery on the happy path.
 
 [Go to the Top](#table-of-content)
 
@@ -114,37 +114,46 @@ is a value you can store in a variable, pass to a function, log, transform, or i
 
 ## 2. The Two Categories of Failure
 
-Rust splits *everything that can go wrong* into exactly two buckets, and gives each
-its own mechanism:
+Rust splits *everything that can go wrong* into exactly two buckets, and gives each its own mechanism:
 
 ```text
                     Something went wrong
                             │
              ┌──────────────┴───────────────┐
              ▼                              ▼
-     RECOVERABLE                      UNRECOVERABLE
-   "expected, handleable"          "a bug / broken invariant"
+       RECOVERABLE                    UNRECOVERABLE
+  "expected, handleable"          "a bug / broken invariant"
              │                              │
              ▼                              ▼
-     Result<T, E>                       panic!
-     Option<T>                          (unwind or abort)
+        Result<T, E>                     panic!
+         Option<T>                   (unwind or abort)
              │                              │
              ▼                              ▼
    caller decides what to do        program (or thread) stops
 ```
 
-**Recoverable** errors are part of normal operation. A file might be missing. User
-input might be malformed. A network request might time out. The program should keep
-running and *do something sensible*. These use `Result<T, E>` (or `Option<T>` when
-the only information is "present or absent").
+**Recoverable** errors are part of normal operation.  
+
+- A file might be missing.  
+- User input might be malformed.  
+- A network request might time out.  
+- The program should keep running and *do something sensible*.  
+
+These use `Result<T, E>` (or `Option<T>` when the only information is "present or absent").
 
 **Unrecoverable** errors mean the program reached a state it was never supposed to
-reach — a violated assumption, a logic bug, an impossible branch. Continuing would be
-meaningless or dangerous. These trigger `panic!`, which tears down the current thread.
+reach.
 
-> The single most important design question in Rust error handling is:
-> **"Is this a situation my caller can reasonably respond to, or is it a bug?"**
-> The answer picks your mechanism.
+- a violated assumption,
+- a logic bug,
+- an impossible branch
+
+Continuing would be meaningless or dangerous.  
+These trigger `panic!`, which tears down the current thread.  
+
+> The single most important design question in Rust error handling is:  
+> **"Is this a situation my caller can reasonably respond to, or is it a bug?"**  
+> The answer picks your mechanism.  
 
 [Go to the Top](#table-of-content)
 
@@ -152,14 +161,14 @@ meaningless or dangerous. These trigger `panic!`, which tears down the current t
 
 ## 3. The Type System Forces You to Care
 
-`Result` is annotated `#[must_use]`. If you call a fallible function and drop the
-result on the floor, the compiler warns you:
+`Result` is annotated `#[must_use]`.  
+If you call a fallible function and drop the result on the floor, the compiler warns you:
 
 ```rust
 use std::fs::File;
 
 fn main() {
-    File::open("config.toml"); // ⚠️ warning: unused `Result` that must be used
+    File::open("config.toml"); // warning: unused `Result` that must be used
 }
 ```
 
@@ -168,16 +177,16 @@ warning: unused `Result` that must be used
  = note: this `Result` may be an `Err` variant, which should be handled
 ```
 
-You cannot *accidentally* ignore an error. To ignore one you must do it **on purpose**:
+You cannot *accidentally* ignore an error.  
+To ignore one you must do it **on purpose**:
 
 ```rust
 let _ = File::open("config.toml");        // explicitly discard
 let _file = File::open("config.toml").ok(); // convert to Option, keep the Some
 ```
 
-This is the enforcement mechanism behind the philosophy: the language nudges (and
-often forces) you to acknowledge every failure path. Contrast with exceptions, where
-silence is the default.
+This is the enforcement mechanism behind the philosophy: the language nudges (and often forces) you to acknowledge every failure path.  
+Contrast with exceptions, where silence is the default.
 
 [Go to the Top](#table-of-content)
 
@@ -189,7 +198,7 @@ A side-by-side you'll want to re-read often:
 
 | Question                                   | Recoverable (`Result`)        | Unrecoverable (`panic!`)          |
 | ------------------------------------------ | ----------------------------- | --------------------------------- |
-| Is it expected during normal operation?    | Yes                           | No — it's a bug                    |
+| Is it expected during normal operation?    | Yes                           | No — it's a bug                   |
 | Can the caller do something useful?        | Yes                           | No                                |
 | Caused by external input / I/O / user?     | Usually                       | Rarely                            |
 | Caused by a broken program invariant?      | No                            | Yes                               |
@@ -220,8 +229,7 @@ fn suit_color(suit: &str) -> &str {
     }
 }
 
-// UNRECOVERABLE — an index we *know* is valid by construction; if it isn't,
-// our surrounding logic is broken.
+// UNRECOVERABLE — an index we *know* is valid by construction; if it isn't, our surrounding logic is broken.
 fn first_byte(data: &[u8]) -> u8 {
     assert!(!data.is_empty(), "first_byte called on empty slice");
     data[0]
@@ -258,8 +266,7 @@ fn first_byte(data: &[u8]) -> u8 {
 
 ## 5. `Option<T>` — Modeling Absence
 
-Before `Result`, meet its simpler sibling. `Option<T>` encodes "a value that might
-not be there" — with **no error information**, just present or absent.
+Before `Result`, meet its simpler sibling. `Option<T>` encodes "a value that might not be there" — with **no error information**, just present or absent.
 
 ```rust
 enum Option<T> {
@@ -268,7 +275,7 @@ enum Option<T> {
 }
 ```
 
-Use `Option` when absence is the *only* thing worth communicating (there's no "why").
+Use `Option` when absence is the *only* thing worth communicating (there's no "why").  
 Use `Result` when the failure carries a reason.
 
 ```rust
@@ -333,8 +340,7 @@ Result<T, E>
 ```
 
 - `T` is the success type.
-- `E` is the error type — and it can be *anything*: a std error, your own enum, a
-  `String`, a `Box<dyn Error>`.
+- `E` is the error type — and it can be *anything*: a std error, your own enum, a `String`, a `Box<dyn Error>`.
 
 ```rust
 use std::num::ParseIntError;
@@ -352,8 +358,8 @@ fn main() {
 
 ### `Result` in `main`
 
-`main` itself can return a `Result`. On `Err`, the process exits with a non-zero code
-and prints the error's `Debug` representation:
+`main` itself can return a `Result`.  
+On `Err`, the process exits with a non-zero code and prints the error's `Debug` representation:
 
 ```rust
 use std::num::ParseIntError;
@@ -402,7 +408,7 @@ fn main() {
     match file {
         Ok(f) => println!("Opened {:?}", f),
         Err(e) => match e.kind() {
-            ErrorKind::NotFound        => println!("Create the file first."),
+            ErrorKind::NotFound         => println!("Create the file first."),
             ErrorKind::PermissionDenied => println!("Check your permissions."),
             other                       => println!("Unexpected: {:?}", other),
         },
@@ -421,8 +427,7 @@ if let Ok(n) = parse_number("7") {
 
 ### `let else` — bind or bail (Rust 1.65+)
 
-Great for "extract the happy value or leave early", keeping the rest of the function
-un-indented:
+Great for "extract the happy value or leave early", keeping the rest of the function un-indented:
 
 ```rust
 fn describe(input: &str) -> String {
@@ -440,9 +445,9 @@ fn describe(input: &str) -> String {
 
 ## 8. The Combinator Toolbox
 
-`match` is powerful but verbose. `Option` and `Result` come with dozens of methods
-("combinators") that express common patterns concisely. These are the ones worth
-memorizing.
+`match` is powerful but verbose.  
+`Option` and `Result` come with dozens of methods ("combinators") that express common patterns concisely.  
+These are the ones worth memorizing.
 
 ### Transform the success value: `map`
 
@@ -515,8 +520,8 @@ Escape hatches (may panic — see §12):
 
 ## 9. The `?` Operator In Depth
 
-The `?` operator is Rust's ergonomic error-propagation tool. It replaces the verbose
-"match, and on `Err` return early" boilerplate.
+The `?` operator is Rust's ergonomic error-propagation tool.  
+It replaces the verbose "match, and on `Err` return early" boilerplate.
 
 ### What `?` expands to
 
@@ -536,8 +541,7 @@ Two things happen on the `Err` path:
 1. The function **returns early**.
 2. The error is converted via `From::from` into the function's declared error type.
 
-That second point is the secret sauce that makes `?` compose across different error
-types (see §19).
+That second point is the secret sauce that makes `?` compose across different error types (see §19).
 
 ### `?` chains beautifully
 
@@ -572,15 +576,14 @@ fn main() {
 
 ### Where `?` can be used
 
-`?` only works inside a function whose return type can absorb the early return —
-`Result`, `Option`, or any type implementing the `Try` trait. You **cannot** use `?`
-in a plain function returning `()` or `i32`.
+`?` only works inside a function whose return type can absorb the early return — `Result`, `Option`, or any type implementing the `Try` trait.  
+You **cannot** use `?` in a plain function returning `()` or `i32`.
 
 ```text
-fn f() -> Result<T, E>   ✅  ? returns Err(...)
-fn f() -> Option<T>      ✅  ? returns None
-fn main() -> Result<..>  ✅  ? works in main if main returns Result
-fn f() -> i32            ❌  nothing to early-return into
+fn f() -> Result<T, E>    ? returns Err(...)
+fn f() -> Option<T>       ? returns None
+fn main() -> Result<..>   ? works in main if main returns Result
+fn f() -> i32             nothing to early-return into
 ```
 
 [Go to the Top](#table-of-content)
@@ -589,7 +592,8 @@ fn f() -> i32            ❌  nothing to early-return into
 
 ## 10. Converting Between `Option` and `Result`
 
-You constantly move between "maybe absent" and "maybe failed". These are the bridges.
+You constantly move between "maybe absent" and "maybe failed".  
+These are the bridges.
 
 ```rust
 fn main() {
@@ -626,8 +630,8 @@ fn main() {
 
 ## 11. `panic!` — What Actually Happens
 
-`panic!` is Rust's mechanism for **unrecoverable** errors. It says: "the program is in
-a state I don't know how to handle; stop this thread now."
+`panic!` is Rust's mechanism for **unrecoverable** errors.  
+It says: "the program is in a state I don't know how to handle; stop this thread now."
 
 ```rust
 fn main() {
@@ -657,9 +661,9 @@ panic!  ─▶  print message + location
         ─▶  if it was the main thread, the process exits (code 101)
 ```
 
-Panicking is **not** how you report expected errors. It's a controlled crash for
-"this should never happen" situations. A library that panics on bad input is
-considered buggy; it should return `Result` instead.
+Panicking is **not** how you report expected errors.  
+It's a controlled crash for "this should never happen" situations.  
+A library that panics on bad input is considered buggy; it should return `Result` instead.
 
 ### Panics can carry any payload, but strings are typical
 
@@ -678,8 +682,8 @@ $env:RUST_BACKTRACE=1 ; cargo run
 RUST_BACKTRACE=1 cargo run
 ```
 
-A backtrace shows the chain of calls that led to the panic — invaluable for finding
-the bug that put the program in the impossible state.
+A backtrace shows the chain of calls that led to the panic  
+— invaluable for finding the bug that put the program in the impossible state.
 
 [Go to the Top](#table-of-content)
 
@@ -687,8 +691,8 @@ the bug that put the program in the impossible state.
 
 ## 12. `unwrap`, `expect`, and Their Cousins
 
-These methods **turn a recoverable error into an unrecoverable one**. They're
-convenient, dangerous when misused, and perfectly fine when used deliberately.
+These methods **turn a recoverable error into an unrecoverable one**.  
+They're convenient, dangerous when misused, and perfectly fine when used deliberately.
 
 ### `unwrap` — value or panic
 
@@ -704,8 +708,9 @@ called `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit 
 
 ### `expect` — value or panic *with your message*
 
-Always prefer `expect` over `unwrap`: the message documents **why you believed it
-couldn't fail**, which is exactly what the person debugging the panic needs.
+Always prefer `expect` over `unwrap`:  
+the message documents **why you believed it couldn't fail**,  
+which is exactly what the person debugging the panic needs.
 
 ```rust
 let config = std::fs::read_to_string("Cargo.toml")
@@ -717,9 +722,8 @@ thread 'main' panicked at ...:
 Cargo.toml must exist at the crate root: Os { code: 2, kind: NotFound, ... }
 ```
 
-> Convention: phrase the `expect` message as the *precondition that was supposed to
-> hold*, not the error. "Env var X should be set by the launcher" reads better in a
-> crash log than "failed to read env var".
+> Convention: phrase the `expect` message as the *precondition that was supposed to hold*, not the error.  
+> "Env var X should be set by the launcher" reads better in a crash log than "failed to read env var".
 
 ### The `Option` equivalents
 
@@ -735,8 +739,7 @@ let none: Option<i32> = None;
 ### When `unwrap`/`expect` are acceptable
 
 - **Prototypes, examples, tests** — brevity beats ceremony.
-- **You can prove it can't fail** — e.g. a hard-coded literal you just validated, or
-  a regex you compiled from a constant string.
+- **You can prove it can't fail** — e.g. a hard-coded literal you just validated, or a regex you compiled from a constant string.
 - **A poisoned lock** where you genuinely want to propagate the panic.
 
 ```rust
@@ -755,8 +758,8 @@ let s = std::str::from_utf8(b"hello").expect("hard-coded bytes are valid UTF-8")
 
 ## 13. The `assert!` Family
 
-Assertions enforce **invariants** — conditions your code assumes to be true. A failed
-assertion panics, so assertions are a form of "check-or-crash".
+Assertions enforce **invariants** — conditions your code assumes to be true.  
+A failed assertion panics, so assertions are a form of "check-or-crash".
 
 ```rust
 fn withdraw(balance: u32, amount: u32) -> u32 {
@@ -767,7 +770,7 @@ fn withdraw(balance: u32, amount: u32) -> u32 {
 fn main() {
     let remaining = withdraw(100, 30); // ok
     println!("{}", remaining);         // 70
-    // withdraw(100, 200);             // 💥 panics: the invariant is violated
+    // withdraw(100, 200);             // panics: the invariant is violated
 }
 ```
 
@@ -780,8 +783,7 @@ assert_ne!(a, b);                    // panics if a == b
 assert!(cond, "msg {}", detail);     // custom panic message
 ```
 
-`assert_eq!` / `assert_ne!` are especially nice because the panic message prints the
-actual left/right values:
+`assert_eq!` / `assert_ne!` are especially nice because the panic message prints the actual left/right values:
 
 ```text
 assertion `left == right` failed
@@ -791,8 +793,8 @@ assertion `left == right` failed
 
 ### `debug_assert!` — checks only in debug builds
 
-Same family, but compiled out in `--release`. Use for expensive invariant checks you
-want during development but not in production hot paths:
+Same family, but compiled out in `--release`.  
+Use for expensive invariant checks you want during development but not in production hot paths:
 
 ```rust
 fn binary_search(sorted: &[i32], target: i32) -> Option<usize> {
@@ -810,10 +812,8 @@ debug_assert!  → checked in debug builds only        → costly checks / dev-t
 
 ### Assertions in tests vs production
 
-- In **tests**, `assert!`/`assert_eq!` are how you *express expectations* — a failure
-  is a failed test, which is the whole point.
-- In **production code**, an assertion documents a real invariant and converts its
-  violation into an immediate, located crash rather than silent corruption.
+- In **tests**, `assert!`/`assert_eq!` are how you *express expectations* — a failure is a failed test, which is the whole point.
+- In **production code**, an assertion documents a real invariant and converts its violation into an immediate, located crash rather than silent corruption.
 
 [Go to the Top](#table-of-content)
 
@@ -825,8 +825,8 @@ Three specialized panics that communicate intent.
 
 ### `unreachable!` — "control flow can't get here"
 
-Tells both the compiler and the reader that a branch is logically impossible. If it
-*does* execute, that's a bug worth crashing on.
+Tells both the compiler and the reader that a branch is logically impossible.  
+If it *does* execute, that's a bug worth crashing on.
 
 ```rust
 fn parity(n: u32) -> &'static str {
@@ -840,8 +840,8 @@ fn parity(n: u32) -> &'static str {
 
 ### `todo!` — "not written yet, but I intend to"
 
-A placeholder that type-checks as any type, so your code compiles while you stub out
-functions. Panics if actually run.
+A placeholder that type-checks as any type, so your code compiles while you stub out functions.  
+Panics if actually run.  
 
 ```rust
 fn compute_tax(_income: f64) -> f64 {
@@ -851,8 +851,7 @@ fn compute_tax(_income: f64) -> f64 {
 
 ### `unimplemented!` — "not supported here, and maybe never"
 
-Similar to `todo!` but signals "this case is deliberately not handled" rather than
-"coming soon".
+Similar to `todo!` but signals "this case is deliberately not handled" rather than "coming soon".
 
 ```rust
 trait Shape { fn area(&self) -> f64; }
@@ -916,9 +915,9 @@ pub fn parse_percentage(text: &str) -> Result<u8, std::num::ParseIntError> {
 
 ### The guiding principle
 
-> `panic!` removes the caller's ability to decide. Reach for it only when there is no
-> sensible decision left to make. If a reasonable caller might want to recover, that
-> decision belongs to them — return a `Result`.
+> `panic!` removes the caller's ability to decide.  
+> Reach for it only when there is no sensible decision left to make.  
+> If a reasonable caller might want to recover, that decision belongs to them — return a `Result`.
 
 [Go to the Top](#table-of-content)
 
@@ -928,9 +927,8 @@ pub fn parse_percentage(text: &str) -> Result<u8, std::num::ParseIntError> {
 
 ### Two panic strategies
 
-By default a panic **unwinds**: it walks back up the stack running destructors
-(`Drop`) so resources are released cleanly. You can instead configure panics to
-**abort** — instantly terminate the process with no unwinding.
+By default a panic **unwinds**: it walks back up the stack running destructors (`Drop`) so resources are released cleanly.  
+You can instead configure panics to **abort** — instantly terminate the process with no unwinding.  
 
 ```toml
 # Cargo.toml — abort on panic (smaller binaries, no unwinding machinery)
@@ -950,9 +948,8 @@ catchable via catch_unwind          not catchable
 
 ### `catch_unwind` — trap a panic at a boundary
 
-Occasionally you must stop a panic from crossing a boundary — most importantly at an
-**FFI edge**, because unwinding into C is undefined behavior. `std::panic::catch_unwind`
-turns a panic into a `Result`.
+Occasionally you must stop a panic from crossing a boundary — most importantly at an **FFI edge**, because unwinding into C is undefined behavior.  
+`std::panic::catch_unwind` turns a panic into a `Result`.
 
 ```rust
 use std::panic;
@@ -979,10 +976,9 @@ caught a panic; continuing
 main survived
 ```
 
-> **Do not** use `catch_unwind` as a general try/catch for control flow. It exists for
-> boundary safety (FFI, thread/task isolation in runtimes), not for handling ordinary
-> errors — those belong in `Result`. It also can't catch an `abort`, and won't catch
-> panics if `panic = "abort"` is set.
+> **Do not** use `catch_unwind` as a general try/catch for control flow.  
+> It exists for boundary safety (FFI, thread/task isolation in runtimes), not for handling ordinary errors — those belong in `Result`.  
+> It also can't catch an `abort`, and won't catch panics if `panic = "abort"` is set.
 
 [Go to the Top](#table-of-content)
 
@@ -990,8 +986,8 @@ main survived
 
 ## 17. Custom Error Enums
 
-Real programs need error types richer than `ParseIntError`. The idiomatic base is a
-plain enum, one variant per failure mode.
+Real programs need error types richer than `ParseIntError`.  
+The idiomatic base is a plain enum, one variant per failure mode.
 
 ```rust
 #[derive(Debug)]
@@ -1018,8 +1014,8 @@ fn main() {
 }
 ```
 
-`#[derive(Debug)]` alone lets you print an error with `{:?}` and is the minimum for a
-usable error type. For anything public-facing, add `Display` and `Error` (next).
+`#[derive(Debug)]` alone lets you print an error with `{:?}` and is the minimum for a usable error type.  
+For anything public-facing, add `Display` and `Error`.
 
 [Go to the Top](#table-of-content)
 
@@ -1031,8 +1027,7 @@ A well-behaved error type implements three things:
 
 1. `Debug` (usually derived) — developer-facing, `{:?}`.
 2. `Display` (hand-written) — user-facing, `{}`.
-3. `std::error::Error` — the marker trait that makes it interoperable with the whole
-   ecosystem (and lets it be boxed as `Box<dyn Error>`).
+3. `std::error::Error` — the marker trait that makes it interoperable with the whole ecosystem (and lets it be boxed as `Box<dyn Error>`).
 
 ```rust
 use std::fmt;
@@ -1066,8 +1061,8 @@ fn main() {
 
 ### The `Error` trait and error sources
 
-`std::error::Error` also lets an error expose the lower-level error that *caused* it,
-via `source()`. This builds an error chain you can walk:
+`std::error::Error` also lets an error expose the lower-level error that *caused* it, via `source()`.  
+This builds an error chain you can walk:
 
 ```rust
 use std::fmt;
@@ -1108,14 +1103,14 @@ fn main() {
 
 ## 19. `From`, `Into`, and Automatic Conversion
 
-Recall from §9 that `?` calls `From::from` on the error. This is what lets one
-function propagate many *different* underlying errors as a single unified error type.
+Recall from §9 that `?` calls `From::from` on the error.  
+This is what lets one function propagate many *different* underlying errors as a single unified error type.
 
 ### The problem `From` solves
 
 ```rust
-// This function can fail two different ways: reading a file (io::Error)
-// and parsing its contents (ParseIntError). We want ONE error type out.
+// This function can fail two different ways: reading a file (io::Error)  and parsing its contents (ParseIntError).  
+// We want ONE error type out.
 use std::fs;
 
 #[derive(Debug)]
@@ -1133,7 +1128,7 @@ impl From<std::num::ParseIntError> for AppError {
 }
 
 fn read_number(path: &str) -> Result<i32, AppError> {
-    let text = fs::read_to_string(path)?; // io::Error -> AppError via From
+    let text = fs::read_to_string(path)?;  // io::Error -> AppError via From
     let n = text.trim().parse::<i32>()?;   // ParseIntError -> AppError via From
     Ok(n)
 }
@@ -1159,13 +1154,9 @@ fn main() {
 
 ### Why implement `From` and not `Into`
 
-By convention you implement `From`; Rust *automatically* gives you the matching
-`Into` for free. `?` is written in terms of `From`, so implementing `From<SourceError>
-for YourError` is all you need.
-
-> This is exactly the pattern from NEON Exercise 051: `From<ParseIntError> for
-> NumberError` lets `?` convert a library error into your domain error with zero
-> boilerplate at each call site.
+By convention you implement `From`;  
+Rust *automatically* gives you the matching `Into` for free.  
+`?` is written in terms of `From`, so implementing `From<SourceError> for YourError` is all you need.
 
 [Go to the Top](#table-of-content)
 
@@ -1173,9 +1164,9 @@ for YourError` is all you need.
 
 ## 20. `Box<dyn Error>` — The Universal Error
 
-Writing `From` impls and enums is great for libraries where callers need to match on
-specific variants. But in **application** code — a `main`, a script, glue — you often
-just want "any error, propagated upward, printed at the top." That's `Box<dyn Error>`.
+Writing `From` impls and enums is great for libraries where callers need to match on specific variants.  
+But in **application** code — a `main`, a script, glue — you often just want "any error, propagated upward, printed at the top."  
+That's `Box<dyn Error>`.
 
 ```rust
 use std::error::Error;
@@ -1183,7 +1174,7 @@ use std::fs;
 
 // Return type: "a value, or any type that implements the Error trait, on the heap."
 fn read_number(path: &str) -> Result<i32, Box<dyn Error>> {
-    let text = fs::read_to_string(path)?; // io::Error       auto-boxes
+    let text = fs::read_to_string(path)?;  // io::Error       auto-boxes
     let n = text.trim().parse::<i32>()?;   // ParseIntError   auto-boxes
     Ok(n)
 }
@@ -1195,8 +1186,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 ```
 
-Because *every* std error implements `Error`, and `?` converts via `From` (and there's
-a `From<E: Error>` impl for `Box<dyn Error>`), any error flows straight up with `?`.
+Because *every* std error implements `Error`, and `?` converts via `From` (and there's a `From<E: Error>` impl for `Box<dyn Error>`), any error flows straight up with `?`.
 
 ```text
 Box<dyn Error> trade-offs
@@ -1206,8 +1196,8 @@ Box<dyn Error> trade-offs
   ✘ erases the concrete type (dynamic dispatch)
 ```
 
-Rule of thumb: **libraries** expose concrete error enums (callers may need to react
-per-variant); **applications** often use `Box<dyn Error>` (they just report and exit).
+Rule of thumb: **libraries** expose concrete error enums (callers may need to react per-variant);  
+**applications** often use `Box<dyn Error>` (they just report and exit).
 
 [Go to the Top](#table-of-content)
 
@@ -1215,13 +1205,13 @@ per-variant); **applications** often use `Box<dyn Error>` (they just report and 
 
 ## 21. `thiserror` and `anyhow` — The Ecosystem Standard
 
-Hand-writing `Display` and `From` gets tedious. Two crates dominate real-world Rust and
-map cleanly onto the library-vs-application split above.
+Hand-writing `Display` and `From` gets tedious.  
+Two crates dominate real-world Rust and map cleanly onto the library-vs-application split above.
 
 ### `thiserror` — ergonomic custom errors (for libraries)
 
-Derives `Display`, `Error`, and `From` from attributes. You still get a concrete,
-matchable enum — just without the boilerplate.
+Derives `Display`, `Error`, and `From` from attributes.  
+You still get a concrete, matchable enum — just without the boilerplate.
 
 ```rust
 // Cargo.toml:  thiserror = "1"
@@ -1249,13 +1239,12 @@ pub fn load(path: &str) -> Result<i32, DataError> {
 }
 ```
 
-The `#[error("...")]` strings become the `Display` impl; `#[from]` generates the `From`
-conversion that `?` needs. You wrote an enum; the crate wrote the plumbing.
+The `#[error("...")]` strings become the `Display` impl; `#[from]` generates the `From` conversion that `?` needs.  
+You wrote an enum; the crate wrote the plumbing.
 
 ### `anyhow` — effortless error propagation (for applications)
 
-`anyhow::Error` is like a supercharged `Box<dyn Error>`: it holds any error, captures a
-backtrace, and lets you attach human-readable **context**.
+`anyhow::Error` is like a supercharged `Box<dyn Error>`: it holds any error, captures a backtrace, and lets you attach human-readable **context**.
 
 ```rust
 // Cargo.toml:  anyhow = "1"
@@ -1297,11 +1286,12 @@ Choosing between them
 
 ## 22. Predefined Error Types Reference
 
-A tour of the standard library's built-in error types. Each entry lists the operation
-that produces it and a runnable snippet. Keep this section as your lookup table.
+A tour of the standard library's built-in error types.  
+Each entry lists the operation that produces it and a runnable snippet.  
+Keep this section as your lookup table.
 
-> Every type below implements `std::error::Error` (so they all box into
-> `Box<dyn Error>` and interoperate with `?`), and all implement `Debug` + `Display`.
+> Every type below implements `std::error::Error` (so they all box into `Box<dyn Error>` and interoperate with `?`),  
+> and all implement `Debug` + `Display`.
 
 ### 1. `std::num::ParseIntError` — bad integer text
 
@@ -1431,8 +1421,8 @@ fn main() {
 
 ### 10. `std::io::Error` — the big one: all I/O failures
 
-Produced by files, sockets, stdin/stdout, and more. Carries an `ErrorKind` you can
-match on. This is the most common error you'll handle in real programs.
+Produced by files, sockets, stdin/stdout, and more. Carries an `ErrorKind` you can match on.  
+This is the most common error you'll handle in real programs.
 
 ```rust
 use std::fs::File;
@@ -1487,8 +1477,8 @@ fn main() {
 
 ### 13. `std::sync::PoisonError<T>` — a lock was held during a panic
 
-Produced by `Mutex::lock` / `RwLock::write` after another thread panicked while
-holding the lock. You can still recover the data with `.into_inner()`.
+Produced by `Mutex::lock` / `RwLock::write` after another thread panicked while holding the lock.  
+You can still recover the data with `.into_inner()`.
 
 ```rust
 use std::sync::{Arc, Mutex};
@@ -1532,8 +1522,8 @@ fn main() {
 
 ### 15. `std::sync::mpsc::SendError<T>` — sending to a closed channel
 
-Produced by `Sender::send` when the receiver is gone. It carries the value you tried
-to send so you can reuse it.
+Produced by `Sender::send` when the receiver is gone.  
+It carries the value you tried to send so you can reuse it.
 
 ```rust
 use std::sync::mpsc;
@@ -1568,8 +1558,8 @@ fn main() {
 
 ### 17. `std::cell::BorrowError` — `RefCell` already mutably borrowed
 
-Produced by `RefCell::try_borrow` when a mutable borrow is active. (The panicking
-`borrow` produces the same situation as a panic instead.)
+Produced by `RefCell::try_borrow` when a mutable borrow is active.  
+(The panicking `borrow` produces the same situation as a panic instead.)
 
 ```rust
 use std::cell::RefCell;
@@ -1649,9 +1639,9 @@ fn main() {
 
 ### 22. `std::convert::Infallible` — the error that can never occur
 
-The error type for conversions that *cannot* fail (e.g. `String: FromStr`). Because it
-has no values, matching its `Err` arm is provably dead code. Being replaced over time
-by the never type `!`.
+The error type for conversions that *cannot* fail (e.g. `String: FromStr`).  
+Because it has no values, matching its `Err` arm is provably dead code.  
+Being replaced over time by the never type `!`.
 
 ```rust
 use std::convert::Infallible;
@@ -1705,8 +1695,8 @@ fn main() {
 
 ### 25. `std::alloc::LayoutError` — invalid memory layout parameters
 
-Produced by `Layout::from_size_align` when alignment isn't a power of two or the size
-overflows. Rarely seen outside allocator/`unsafe` code.
+Produced by `Layout::from_size_align` when alignment isn't a power of two or the size overflows.  
+Rarely seen outside allocator/`unsafe` code.
 
 ```rust
 use std::alloc::Layout;
@@ -1739,8 +1729,7 @@ fn main() {
 ### Quick index
 
 ```text
-Parsing text     ParseIntError, ParseFloatError, ParseBoolError, ParseCharError,
-                 AddrParseError
+Parsing text     ParseIntError, ParseFloatError, ParseBoolError, ParseCharError, AddrParseError
 Numeric convert  TryFromIntError, CharTryFromError, Infallible
 Text encoding    Utf8Error, FromUtf8Error, FromUtf16Error, NulError, IntoStringError
 I/O & system     io::Error, VarError, SystemTimeError, fmt::Error
@@ -1774,19 +1763,18 @@ pub fn save() -> Result<()>     { Ok(()) }
 
 ### Never `unwrap` in a library's public API
 
-Return `Result`; let the application decide. `unwrap` in a library takes that choice
-away and can crash someone else's program.
+Return `Result`; let the application decide.  
+`unwrap` in a library takes that choice away and can crash someone else's program.
 
 ### Add context as errors propagate
 
-A bare `io::Error` says "file not found" but not *which* file or *why you wanted it*.
-Wrap with context (`anyhow`'s `.context(...)`, or a custom variant that stores the
-path). Future-you debugging a log will thank present-you.
+A bare `io::Error` says "file not found" but not *which* file or *why you wanted it*.  
+Wrap with context (`anyhow`'s `.context(...)`, or a custom variant that stores the path).  
+Future-you debugging a log will thank present-you.
 
 ### Collect an iterator of `Result`s into one `Result`
 
-A beautiful idiom: `Result` implements `FromIterator`, so a sequence of fallible
-operations short-circuits on the first error.
+A beautiful idiom: `Result` implements `FromIterator`, so a sequence of fallible operations short-circuits on the first error.
 
 ```rust
 fn main() {
@@ -1804,19 +1792,18 @@ fn main() {
 
 ### Match on `io::ErrorKind`, not error strings
 
-Never parse error *messages* — they're not stable. Match the structured `kind()`
-instead, as in §22 entry 10.
+Never parse error *messages* — they're not stable.  
+Match the structured `kind()` instead, as in §22 entry 10.
 
 ### Don't over-model errors
 
-For a throwaway script, `Box<dyn Error>` or `anyhow` is plenty. Reserve rich custom
-enums for libraries and long-lived code where callers genuinely branch on the variant.
+For a throwaway script, `Box<dyn Error>` or `anyhow` is plenty.  
+Reserve rich custom enums for libraries and long-lived code where callers genuinely branch on the variant.
 
 ### Reserve panics for genuine bugs
 
-If you find yourself writing `unwrap` on something that depends on user input, the
-environment, or the network — stop, and return a `Result` instead. Panics are for
-"this is impossible unless my own code is wrong."
+If you find yourself writing `unwrap` on something that depends on user input, the environment, or the network — stop, and return a `Result` instead.  
+Panics are for "this is impossible unless my own code is wrong."
 
 [Go to the Top](#table-of-content)
 
@@ -1873,11 +1860,11 @@ let v = fallible()?;   // Ok → unwrap;  Err → return Err(From::from(e))
 ### Custom error checklist
 
 ```text
-□ #[derive(Debug)]                     developer output
-□ impl Display                         user output
-□ impl std::error::Error {}            ecosystem interop + boxing
-□ impl From<SourceErr> (or #[from])    so `?` converts automatically
-□ (optional) fn source()               expose the underlying cause / chain
+#[derive(Debug)]                     developer output
+impl Display                         user output
+impl std::error::Error {}            ecosystem interop + boxing
+impl From<SourceErr> (or #[from])    so `?` converts automatically
+(optional) fn source()               expose the underlying cause / chain
 ```
 
 ### Panic strategy
@@ -1892,8 +1879,7 @@ catch_unwind                  trap a panic at an FFI/task boundary (not for cont
 ### Library vs application posture
 
 ```text
-LIBRARY       concrete error enums (thiserror), never unwrap public paths,
-              let callers match and decide
+LIBRARY       concrete error enums (thiserror), never unwrap public paths, let callers match and decide
 APPLICATION   Box<dyn Error> / anyhow, add context, report at the top, exit
 ```
 
@@ -1923,12 +1909,13 @@ APPLICATION   Box<dyn Error> / anyhow, add context, report at the top, exit
         retry / default / report           "handle" it)
 ```
 
-> **Return `Result` when a caller can reasonably decide what to do.
+> **Return `Result` when a caller can reasonably decide what to do.  
 > Reach for `panic!` only when there is no sensible decision left to make.**
 
 The whole discipline reduces to honestly answering, at every fallible step:
-*"Is this an expected condition my caller should handle, or a bug that should stop the
-program?"* — and letting the type system carry that answer for you.
+*"Is this an expected condition my caller should handle, or a bug that should stop the program?"* — and letting the type system carry that answer for you.
 
 [Go to the Top](#table-of-content)
+
+---
 
