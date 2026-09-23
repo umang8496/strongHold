@@ -24,14 +24,14 @@ This project helps get the developer familiar with ownership, lifetimes, error-h
 - [Exercise 041 (Non-Lexical Lifetimes in Practice)](#exercise-041)
 - [Exercise 042 (Lifetime Annotations and Lifetime Relationships)](#exercise-042)
 - [Exercise 043 (Lifetimes in Structs)](#exercise-043)
-- [Exercise 044 ('static Lifetime and static Items)](#exercise-044)
+- [Exercise 044 ('static Lifetime and `static` Items)](#exercise-044)
 - [Exercise 045 (Returning References Safely)](#exercise-045)
 
 ### Error Handling
 
 - [Exercise 046 (`Result<T, E>` Intro)](#exercise-046)
 - [Exercise 047 (Handling `Result` with `match`)](#exercise-047)
-- [Exercise 048 ()](#exercise-048)
+- [Exercise 048 (The `?` Operator)](#exercise-048)
 - [Exercise 049 ()](#exercise-049)
 - [Exercise 050 ()](#exercise-050)
 - [Exercise 051 ()](#exercise-051)
@@ -2898,6 +2898,54 @@ fn main() {
 
 ## Exercise 048
 
+Write a function:
+
+- `fn triple_number(input: &str) -> Result<i32, ???>` that parses a number and triples it.
+- Given: `"10"` → `Ok(30)`, `"abc"` → `Err(...)`.
+- The function should use the `?` operator.
+- `main` should handle the final `Result` using `match`.
+- Constraints:
+
+  - No `unwrap()`.
+  - No `match` inside `triple_number`.
+  - Use `?` for error propagation.
+
+### Response
+
+```rust
+use std::num::ParseIntError;
+
+fn triple_number(input: &str) -> Result<i32, ParseIntError> {
+    let value = input.parse::<i32>()?;
+    Ok(value * 3)
+}
+
+fn main() {
+    let ten = "10";
+    let abc = "abc";
+
+    match triple_number(ten) {
+        Ok(result) => println!("Triple of {} is {}", ten, result),
+        Err(e) => println!("Error parsing {}: {}", ten, e),
+    }
+
+    match triple_number(abc) {
+        Ok(result) => println!("Triple of {} is {}", abc, result),
+        Err(e) => println!("Error parsing {}: {}", abc, e),
+    }
+}
+```
+
+### Learning
+
+- `Result<T, E>` represents either success (`Ok(T)`) or failure (`Err(E)`).
+- The `?` operator propagates an `Err` to the caller.
+- On `Ok`, `?` extracts the successful value and execution continues.
+- On `Err`, `?` immediately returns from the current function.
+- `?` does not handle the error; it delegates the responsibility to the caller.
+- The caller can use `match` to actually handle the final `Result`.
+- `?` is useful for keeping business logic focused while allowing errors to flow upward.
+
 [Go to the Top](#table-of-content)
 
 ---
@@ -2925,5 +2973,4 @@ fn main() {
 [Go to the Top](#table-of-content)
 
 ---
-
 
